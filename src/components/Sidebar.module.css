@@ -1,0 +1,213 @@
+.sidebar {
+  width: var(--sidebar-width);
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--slate-200);
+  display: flex;
+  flex-direction: column;
+  transition: width var(--transition-slow);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+/* Logo */
+.logoSection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-4);
+  border-bottom: 1px solid var(--slate-100);
+  height: var(--header-height);
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: var(--slate-900);
+}
+
+.logoIcon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.logoText {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--slate-900);
+  white-space: nowrap;
+}
+
+.collapseBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  color: var(--slate-500);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.collapseBtn:hover {
+  background: var(--slate-50);
+  color: var(--slate-700);
+}
+
+.collapseBtn .rotated {
+  transform: rotate(180deg);
+}
+
+.collapsed .collapseBtn {
+  display: none;
+}
+
+/* Navigation */
+.nav {
+  flex: 1;
+  padding: var(--space-4) var(--space-3);
+  overflow-y: auto;
+}
+
+.navSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.navLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  color: var(--slate-600);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  transition: all var(--transition-fast);
+  position: relative;
+  white-space: nowrap;
+  min-height: 40px;
+}
+
+.navItem:hover {
+  background: var(--slate-50);
+  color: var(--slate-800);
+}
+
+.navItemActive {
+  background: var(--primary-50);
+  color: var(--primary-700);
+}
+
+.navItemActive:hover {
+  background: var(--primary-50);
+  color: var(--primary-700);
+}
+
+.navItemLabel {
+  flex: 1;
+}
+
+.navBadge {
+  background: var(--primary-600);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  line-height: 1.4;
+}
+
+.navBadgeDot {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary-600);
+}
+
+/* Footer */
+.footer {
+  padding: var(--space-3);
+  border-top: 1px solid var(--slate-100);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.footerItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  color: var(--slate-500);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  /* also used on <button> (Sign Out) */
+  width: 100%;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.footerItem:hover {
+  background: var(--slate-50);
+  color: var(--slate-700);
+}
+
+/* Collapsed state adjustments */
+.collapsed .navItem {
+  justify-content: center;
+  padding: var(--space-2);
+}
+
+.collapsed .footerItem {
+  justify-content: center;
+  padding: var(--space-2);
+}
+
+.collapsed .logoSection {
+  justify-content: center;
+}

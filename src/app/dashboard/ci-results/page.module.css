@@ -1,0 +1,530 @@
+.content {
+  padding: var(--space-6);
+  max-width: 1440px;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.noticeInfo {
+  background: var(--primary-50);
+  border: 1px solid var(--primary-200);
+  color: var(--primary-700);
+}
+
+.noticeSuccess {
+  background: var(--success-50);
+  border: 1px solid var(--success-200);
+  color: var(--success-700);
+}
+
+/* Summary stats grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: 1024px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.statCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.statIconWrap {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.iconBlue { color: var(--primary-600); }
+.iconGreen { color: var(--success-600); }
+.iconPurple { color: #7c3aed; }
+.iconAmber { color: var(--warning-600); }
+
+.statLabel {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.statValue {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.1;
+  margin-bottom: 2px;
+}
+
+.statSub {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* Control bar */
+.controlBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.searchBox {
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.searchBox input {
+  padding-left: 36px;
+}
+
+.filtersGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Two-column layout */
+.ciLayout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: var(--space-6);
+}
+
+@media (max-width: 1024px) {
+  .ciLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Runs pane */
+.runsPane {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: calc(100vh - 220px);
+}
+
+.runsHeader {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
+.runsTitle {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.runsList {
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.runCard {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.runCard:hover {
+  border-color: var(--primary-300);
+  background: var(--slate-50);
+}
+
+.selectedRunCard {
+  border-color: var(--primary-500) !important;
+  background: var(--primary-50) !important;
+  box-shadow: 0 0 0 1px var(--primary-500);
+}
+
+.runCardTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.runProjectBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--slate-100);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.runTime {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.commitMsg {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.runCardMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.metaBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.runCardProgress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+}
+
+.testCounters {
+  display: flex;
+  gap: var(--space-2);
+  font-weight: 500;
+}
+
+.textGreen { color: var(--success-600); }
+.textRed { color: var(--danger-600); }
+.textMuted { color: var(--text-muted); }
+
+.covBadge {
+  font-weight: 600;
+  color: var(--primary-600);
+}
+
+/* Detail pane */
+.detailPane {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.detailCard {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.detailTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.detailBadgeGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.detailCommitTitle {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.detailSubInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* Breakdown bar */
+.breakdownBox {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.breakdownBar {
+  height: 12px;
+  background: var(--slate-200);
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: var(--space-3);
+}
+
+.barPassed { background: var(--success-500); }
+.barFailed { background: var(--danger-500); }
+.barSkipped { background: var(--slate-400); }
+
+.breakdownStats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.statPassed {
+  color: var(--success-700);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statFailed {
+  color: var(--danger-700);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statSkipped {
+  color: var(--text-muted);
+}
+
+/* Failure analysis section */
+.failureSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.failureSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: var(--space-3);
+}
+
+.failureHeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.failureHeaderTitle h3 {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sparkleIcon {
+  color: #7c3aed;
+}
+
+.aiTriageBadge {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.failureList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.failureItem {
+  background: var(--bg-primary);
+  border: 1px solid var(--danger-200);
+  border-left: 4px solid var(--danger-500);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.failureItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.failureItemTitleGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.iconAlert {
+  color: var(--danger-500);
+}
+
+.failureTestName {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.failureDuration {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.errorStack {
+  background: #0f172a;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 12px;
+  color: #f87171;
+  font-family: monospace;
+  overflow-x: auto;
+}
+
+.aiInsightCard {
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.aiInsightHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: #7e22ce;
+  margin-bottom: 4px;
+}
+
+.aiInsightText {
+  font-size: var(--text-xs);
+  color: #581c87;
+  line-height: 1.5;
+}
+
+/* All Green Card */
+.allGreenCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-10) var(--space-6);
+  background: var(--success-50);
+  border: 1px solid var(--success-200);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.allGreenIcon {
+  color: var(--success-500);
+  margin-bottom: var(--space-3);
+}
+
+.allGreenTitle {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--success-800);
+  margin-bottom: var(--space-1);
+}
+
+.allGreenDesc {
+  font-size: var(--text-sm);
+  color: var(--success-700);
+  max-width: 500px;
+}
+
+.noRunSelected {
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.emptyRuns {
+  padding: var(--space-6) var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: center;
+}

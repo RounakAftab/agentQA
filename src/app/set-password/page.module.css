@@ -1,0 +1,133 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--slate-50);
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-8);
+}
+
+.card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.logoIcon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--primary-600);
+  color: #fff;
+}
+
+.logoText {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.muted {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  background: var(--danger-50);
+  border: 1px solid var(--danger-100);
+  color: var(--danger-700);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.passwordWrapper {
+  position: relative;
+}
+
+.passwordInput {
+  padding-right: 40px;
+}
+
+.toggle {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  display: flex;
+  padding: var(--space-1);
+  background: none;
+  border: none;
+  color: var(--slate-400);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--slate-600);
+}
+
+.rules {
+  list-style: none;
+  margin: var(--space-1) 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.rules li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ruleOk {
+  color: var(--success-600);
+}
+
+.fullWidth {
+  width: 100%;
+  margin-top: var(--space-4);
+  justify-content: center;
+}

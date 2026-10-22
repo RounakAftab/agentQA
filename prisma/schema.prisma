@@ -1,0 +1,261 @@
+// Prisma schema for Agentic QA Operations Platform
+// Represents the enterprise data model for projects, AI workflows, checkpoints, test cases, and audit trails
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // non-pooled connection used by migrations (same as DATABASE_URL locally)
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  QA_LEAD
+  QA_ENGINEER
+  DEVELOPER
+}
+
+enum ProjectHealth {
+  HEALTHY
+  WARNING
+  CRITICAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
+enum WorkflowStatus {
+  IN_PROGRESS
+  AWAITING_APPROVAL
+  COMPLETED
+  FAILED
+}
+
+enum CIStatus {
+  PASSED
+  FAILED
+  RUNNING
+  CANCELLED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  role         Role      @default(QA_ENGINEER)
+  avatar       String?
+  disabled     Boolean   @default(false)
+  passwordHash String? // null until the invited user sets a password
+  deletedAt    DateTime? // soft delete keeps names in history
+  lastLoginAt  DateTime?
+  keycloakId   String?   @unique
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  projects       ProjectMember[]
+  approvals      Approval[]      @relation("AssignedApprovals")
+  approvedItems  Approval[]      @relation("ApprovedBy")
+  auditEvents    AuditEvent[]
+  comments       Comment[]
+  passwordTokens PasswordToken[]
+}
+
+model PasswordToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique // sha256 of the emailed token; the raw token is never stored
+  purpose   String    @default("invite") // invite | reset
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Project {
+  id                String        @id @default(cuid())
+  name              String
+  description       String
+  repoUrl           String
+  automationRepoUrl String
+  defaultBranch     String        @default("main")
+  language          String
+  framework         String
+  health            ProjectHealth @default(HEALTHY)
+  testCoverage      Float         @default(0.0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  members      ProjectMember[]
+  requirements Requirement[]
+  testCases    TestCase[]
+  workflowRuns WorkflowRun[]
+  ciRuns       CIRun[]
+  auditEvents  AuditEvent[]
+}
+
+model ProjectMember {
+  id        String  @id @default(cuid())
+  userId    String
+  projectId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+}
+
+model Requirement {
+  id             String   @id @default(cuid())
+  projectId      String
+  title          String
+  source         String // e.g. "GitHub Issue #241"
+  sourceUrl      String
+  status         String   @default("analyzed")
+  priority       String   @default("medium")
+  generatedTests Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCases    TestCase[]
+  workflowRuns WorkflowRun[]
+}
+
+model TestCase {
+  id               String         @id @default(cuid())
+  projectId        String
+  requirementId    String?
+  title            String
+  type             String // functional, integration, regression, e2e
+  priority         String         @default("medium")
+  status           ApprovalStatus @default(PENDING)
+  aiGenerated      Boolean        @default(true)
+  automationStatus String         @default("pending") // pending, scripted
+  lastResult       String? // pass, fail, null
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirement Requirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  approvals   Approval[]
+}
+
+model WorkflowRun {
+  id            String         @id @default(cuid())
+  projectId     String
+  requirementId String?
+  title         String
+  status        WorkflowStatus @default(IN_PROGRESS)
+  startedAt     DateTime       @default(now())
+  completedAt   DateTime?
+
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirement Requirement?         @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  checkpoints WorkflowCheckpoint[]
+}
+
+model WorkflowCheckpoint {
+  id            String   @id @default(cuid())
+  workflowRunId String
+  stepIndex     Int
+  stepName      String
+  state         String // serialized LangGraph state
+  savedAt       DateTime @default(now())
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+}
+
+model Approval {
+  id           String         @id @default(cuid())
+  projectId    String
+  testCaseId   String?
+  type         String // test_design, automation_script, draft_pr
+  title        String
+  description  String
+  status       ApprovalStatus @default(PENDING)
+  requestedBy  String // "AI Agent"
+  assignedToId String
+  approvedById String?
+  aiConfidence Float          @default(0.9)
+  codePreview  String         @db.Text
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  testCase   TestCase? @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
+  assignedTo User      @relation("AssignedApprovals", fields: [assignedToId], references: [id])
+  approvedBy User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
+  comments   Comment[]
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  approvalId String
+  userId     String
+  text       String
+  createdAt  DateTime @default(now())
+
+  approval Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CIRun {
+  id            String    @id @default(cuid())
+  projectId     String
+  branch        String
+  commit        String
+  commitMessage String
+  status        CIStatus  @default(RUNNING)
+  triggeredBy   String    @default("push")
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  duration      Int? // seconds
+  totalTests    Int       @default(0)
+  passed        Int       @default(0)
+  failed        Int       @default(0)
+  skipped       Int       @default(0)
+  coverage      Float     @default(0.0)
+
+  project  Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  failures CIFailure[]
+}
+
+model CIFailure {
+  id         String @id @default(cuid())
+  ciRunId    String
+  testName   String
+  className  String
+  error      String @db.Text
+  duration   Float
+  aiAnalysis String @db.Text
+
+  ciRun CIRun @relation(fields: [ciRunId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  projectId String?
+  action    String
+  target    String
+  details   String
+  timestamp DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+// Failed-login counters. Stored in the database so the lockout works across serverless instances.
+model RateLimit {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+}

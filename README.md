@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgentQA
 
-## Getting Started
+A QA operations dashboard built with Next.js 16, PostgreSQL (Prisma) and password sign-in.
+Admins invite people by email; projects, users and the audit trail are stored in the database.
 
-First, run the development server:
+## Run it locally
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Use three terminals, all in this folder:
+
+```
+npm install
+npm run db:start      # 1. local PostgreSQL on port 54329 (keep it running)
+npm run mail:start    # 2. local mail server; read emails at http://localhost:1080
+npm run dev           # 3. the app at http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+First time only, after `npm run db:start` is running:
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+```
+npm run db:migrate    # create the tables
+npm run db:seed       # create the first admin from ADMIN_NAME / ADMIN_EMAIL in .env
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The seed emails an invitation to the admin. Open it in the MailDev inbox (http://localhost:1080),
+choose a password, then sign in.
 
-## Learn More
+Copy `.env.example` to `.env` and fill it in. Settings are explained in [README-EMAIL.md](README-EMAIL.md).
 
-To learn more about Next.js, take a look at the following resources:
+## Commands
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build and server |
+| `npm run db:start` | Local PostgreSQL (data in `.pgdata`) |
+| `npm run db:migrate` | Apply schema changes during development |
+| `npm run db:seed` | Create the first admin (`-- --resend` re-sends their invitation) |
+| `npm run db:wipe -- --yes` | Delete all data from the local database |
+| `npm run db:studio` | Browse the database in a browser |
+| `npm run mail:start` | Local SMTP server with a web inbox |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Roles
 
-## Deploy on Vercel
+| Role | Can do |
+|---|---|
+| Admin | Everything, including adding, editing, disabling and deleting users |
+| QA Lead | Create and manage projects, review approvals |
+| QA Engineer, Developer | View projects, results and approvals |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [DEPLOY.md](DEPLOY.md) for a free setup on Vercel + Neon.
+
+## Status
+
+Working: sign-in with emailed invitations, user management, projects, audit trail.
+Not connected yet: GitHub and CI integrations (requirements, test cases, CI runs and approvals have
+tables but no data source), and an AI backend. The AI Workflow page is a clearly labelled simulation.

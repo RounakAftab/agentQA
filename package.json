@@ -4,17 +4,37 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:start": "node scripts/db.mjs",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "node --no-warnings --env-file=.env prisma/seed.mjs",
+    "db:studio": "prisma studio",
+    "mail:start": "maildev --smtp 1025 --web 1080 --ip 127.0.0.1",
+    "db:wipe": "node --env-file=.env scripts/wipe.mjs",
+    "postinstall": "prisma generate",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed:prod": "node --no-warnings --env-file=.env.production prisma/seed.mjs"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "lucide-react": "^1.61.0",
     "next": "16.4.2",
+    "nodemailer": "^10.2.1",
+    "prisma": "^6.19.3",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "embedded-postgres": "^17.10.0-beta.17",
     "eslint": "^9",
-    "eslint-config-next": "16.4.2"
+    "eslint-config-next": "16.4.2",
+    "maildev": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.9.0"
   }
 }
