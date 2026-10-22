@@ -74,10 +74,10 @@ Create a file `.env.production` (git-ignored) in the project folder with the **p
 DATABASE_URL="<Neon pooled string>"
 DIRECT_URL="<Neon direct string>"
 APP_URL="https://your-app.vercel.app"
-MAIL_FROM="AgentQA <you@your-domain.com>"
-SMTP_HOST="..."
+MAIL_FROM="AgentQA <rounak.aftab@gmail.com>"
+SMTP_HOST="smtp.gmail.com"
 SMTP_PORT="587"
-SMTP_USER="..."
+SMTP_USER="ipx720754@gmail.com"
 SMTP_PASS="..."
 ADMIN_NAME="Your Name"
 ADMIN_EMAIL="you@your-domain.com"
@@ -98,9 +98,37 @@ It creates the admin and emails a link to choose a password. If the email is los
 - Open the site, follow the invitation email, set a password and sign in.
 - Add the rest of your team from Settings -> Team & RBAC Roles.
 
+## 7. GitHub Actions (CI/CD)
+
+`.github/workflows/ci-cd.yml` runs on GitHub's free runners (unlimited for public repositories,
+2,000 minutes a month for private ones; one run takes a few minutes).
+
+- **Every push and pull request:** install, validate the schema, apply migrations to a throwaway
+  Postgres, lint, build, start the production server and smoke-test it.
+- **Pushes to `main`**, once those checks pass: deploy to Vercel production. Database migrations are
+  applied to Neon during the Vercel build.
+
+`vercel.json` turns off Vercel's own Git deployments so each change deploys once, through the pipeline.
+
+### One-time setup
+
+1. Create the Vercel project first (step 4) and set its Environment Variables. The pipeline reads
+   them from Vercel; database and email secrets never go into GitHub.
+2. Get the three Vercel values:
+   - **VERCEL_TOKEN**: vercel.com -> Account Settings -> Tokens -> Create.
+   - **VERCEL_ORG_ID** and **VERCEL_PROJECT_ID**: in the project folder run `npx vercel link`,
+     then open `.vercel/project.json` (`orgId` and `projectId`). The `.vercel` folder is git-ignored.
+3. On GitHub: repository -> Settings -> Secrets and variables -> Actions:
+   - **Secrets** tab -> New repository secret: add `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+   - **Variables** tab (optional): add `PRODUCTION_URL` = `https://your-app.vercel.app` to get a
+     health check after each deploy.
+4. Push to `main`. Watch it under the repository's **Actions** tab.
+
+To deploy by hand, open Actions -> CI/CD -> **Run workflow**.
+
 ## Updating
 
-Push to GitHub. Vercel rebuilds, and any new database migrations are applied automatically.
+Push to `main`. The pipeline tests the change, then deploys it and applies any new database migrations.
 To change the schema locally: edit `prisma/schema.prisma`, run `npm run db:migrate`, commit the new
 folder under `prisma/migrations`.
 

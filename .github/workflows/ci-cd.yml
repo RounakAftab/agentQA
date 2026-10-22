@@ -1,0 +1,152 @@
+# CI/CD on GitHub's free runners.
+#   Every push and pull request: install, check the schema, apply migrations to a throwaway
+#   Postgres, lint, build, start the production server and smoke-test it.
+#   Pushes to main (after CI passes): deploy to Vercel production. The Vercel build runs
+#   "vercel-build", which applies database migrations to Neon before building.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+# Optional repository variable:
+#   PRODUCTION_URL  e.g. https://your-app.vercel.app  (enables the post-deploy health check)
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Lint, build and smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: agentqa
+          POSTGRES_PASSWORD: agentqa
+          POSTGRES_DB: agentqa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentqa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Throwaway values for the CI database only. Real secrets live in Vercel.
+    env:
+      DATABASE_URL: postgresql://agentqa:agentqa@localhost:5432/agentqa
+      DIRECT_URL: postgresql://agentqa:agentqa@localhost:5432/agentqa
+      SESSION_SECRET: ci-only-session-secret-not-used-anywhere-else
+      APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Apply migrations to the CI database
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke test the production server
+        run: |
+          npm start &
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/health; then break; fi
+            sleep 2
+          done
+          echo
+          curl -fsS http://localhost:3000/api/health | grep -q '"ok"'
+          # Signed-out visitors are sent to the login page
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/dashboard)" = "307"
+          # The API refuses requests without a session
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/users)" = "401"
+          echo "Smoke test passed"
+
+  deploy:
+    name: Deploy to Vercel (production)
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check deployment secrets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          missing=""
+          [ -z "$VERCEL_TOKEN" ] && missing="$missing VERCEL_TOKEN"
+          [ -z "$VERCEL_ORG_ID" ] && missing="$missing VERCEL_ORG_ID"
+          [ -z "$VERCEL_PROJECT_ID" ] && missing="$missing VERCEL_PROJECT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. See DEPLOY.md, section 'GitHub Actions'."
+            exit 1
+          fi
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull production settings from Vercel
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Runs the "vercel-build" script: prisma generate, prisma migrate deploy (Neon), next build.
+      - name: Build (applies database migrations)
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Health check
+        if: vars.PRODUCTION_URL != ''
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "${{ vars.PRODUCTION_URL }}/api/health" | grep -q '"ok"'; then
+              echo "Production is healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::${{ vars.PRODUCTION_URL }}/api/health did not report ok"
+          exit 1

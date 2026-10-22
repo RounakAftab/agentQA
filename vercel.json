@@ -1,4 +1,7 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install --omit=dev"
+  "installCommand": "npm install --omit=dev",
+  "git": {
+    "deploymentEnabled": false
+  }
 }
