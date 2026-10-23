@@ -15,13 +15,19 @@ const blank = {
   defaultBranch: 'main',
   language: '',
   framework: '',
+  jiraProjectKey: '',
+  appBaseUrl: '',
   memberIds: [],
 };
 
 // Create (no `project`) or edit (with `project`). Calls onSaved(project) after the API accepts it.
 export default function ProjectFormModal({ project, onClose, onSaved }) {
   const editing = Boolean(project);
-  const [form, setForm] = useState(() => (editing ? { ...blank, ...project, memberIds: project.memberIds } : blank));
+  const [form, setForm] = useState(() =>
+    editing
+      ? { ...blank, ...project, jiraProjectKey: project.jiraProjectKey ?? '', appBaseUrl: project.appBaseUrl ?? '', memberIds: project.memberIds }
+      : blank
+  );
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -126,6 +132,11 @@ export default function ProjectFormModal({ project, onClose, onSaved }) {
               {field('language', 'Language', { placeholder: 'e.g. TypeScript', maxLength: 60 })}
               {field('framework', 'Framework', { placeholder: 'e.g. Next.js', maxLength: 60 })}
               {field('defaultBranch', 'Default branch', { placeholder: 'main', maxLength: 100 })}
+            </div>
+
+            <div className={styles.row}>
+              {field('jiraProjectKey', 'Jira project key', { placeholder: 'e.g. SCRUM', maxLength: 10 })}
+              {field('appBaseUrl', 'App link for tests', { placeholder: 'https://staging.your-app.com', maxLength: 300 })}
             </div>
 
             <fieldset className={styles.members}>

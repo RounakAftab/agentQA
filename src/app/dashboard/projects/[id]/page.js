@@ -108,6 +108,7 @@ function ProjectDetailContent({ params }) {
               {project.language && <span className={styles.techTag}>{project.language}</span>}
               {project.framework && <span className={styles.techTag}>{project.framework}</span>}
               <span className={styles.techTag}>Branch: {project.defaultBranch}</span>
+              {project.jiraProjectKey && <span className={styles.techTag}>Jira: {project.jiraProjectKey}</span>}
             </div>
             <div className={styles.repoLinks}>
               <a href={project.repoUrl} className={styles.repoLink} target="_blank" rel="noopener">

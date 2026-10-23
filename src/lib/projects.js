@@ -38,6 +38,8 @@ async function loadProjects(where) {
       defaultBranch: p.defaultBranch,
       language: p.language,
       framework: p.framework,
+      jiraProjectKey: p.jiraProjectKey,
+      appBaseUrl: p.appBaseUrl,
       health: healthFrom(passRate),
       testCoverage: run ? run.coverage : null,
       passRate,

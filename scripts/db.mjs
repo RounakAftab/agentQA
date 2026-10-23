@@ -15,6 +15,9 @@ const pg = new EmbeddedPostgres({
   password: 'agentqa',
   port: PORT,
   persistent: true,
+  // UTF-8 regardless of the OS locale (Windows defaults to WIN1252, which rejects emoji and
+  // most non-Latin text). Only applies when .pgdata is first created.
+  initdbFlags: ['--encoding=UTF8', '--locale=C'],
 });
 
 if (!fs.existsSync(path.join(dataDir, 'PG_VERSION'))) {

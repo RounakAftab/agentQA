@@ -65,6 +65,7 @@ model User {
   auditEvents    AuditEvent[]
   comments       Comment[]
   passwordTokens PasswordToken[]
+  agentRuns      AgentRun[]
 }
 
 model PasswordToken {
@@ -92,6 +93,8 @@ model Project {
   framework         String
   health            ProjectHealth @default(HEALTHY)
   testCoverage      Float         @default(0.0)
+  jiraProjectKey    String? // e.g. "SCRUM"; the QA Agent reads tickets from this Jira project
+  appBaseUrl        String? // site the generated Playwright tests run against
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -101,6 +104,7 @@ model Project {
   workflowRuns WorkflowRun[]
   ciRuns       CIRun[]
   auditEvents  AuditEvent[]
+  agentRuns    AgentRun[]
 }
 
 model ProjectMember {
@@ -251,6 +255,69 @@ model AuditEvent {
 
   user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+enum AgentRunStatus {
+  QUEUED
+  RUNNING
+  PASSED
+  FAILED
+  CANCELLED
+}
+
+// One QA Agent run: a Jira ticket turned into a verified Playwright spec. Created by the API,
+// claimed and executed by the worker (agent/worker.mjs).
+model AgentRun {
+  id              String         @id @default(cuid())
+  projectId       String
+  issueKey        String // "SCRUM-12"
+  issueSummary    String         @default("")
+  issueSnapshot   Json? // the ticket as read when the run started
+  testPlan        Json? // { flow, steps[], acceptanceCriteria[] } submitted by the agent
+  specPath        String? // tests/generated/scrum_12.spec.ts
+  specContent     String?        @db.Text
+  status          AgentRunStatus @default(QUEUED)
+  step            String? // current pipeline step, see src/lib/agentSteps.js
+  verifiedPass    Boolean        @default(false) // set only by the worker's own test run
+  testAttempts    Int            @default(0)
+  branch          String?
+  prUrl           String?
+  costUsd         Float?
+  error           String?        @db.Text
+  cancelRequested Boolean        @default(false)
+  startedById     String?
+  workerId        String?
+  heartbeatAt     DateTime?
+  queuedAt        DateTime       @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  startedBy User?           @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  events    AgentRunEvent[]
+
+  @@index([status, queuedAt])
+  @@index([projectId, issueKey])
+}
+
+model AgentRunEvent {
+  id      String   @id @default(cuid())
+  runId   String
+  step    String
+  level   String   @default("info") // info | warn | error | success
+  message String   @db.Text
+  at      DateTime @default(now())
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, at])
+}
+
+// Last time each worker process checked in, so the UI can say whether one is running.
+model AgentWorker {
+  id         String   @id
+  hostname   String
+  lastSeenAt DateTime @default(now())
 }
 
 // Failed-login counters. Stored in the database so the lockout works across serverless instances.

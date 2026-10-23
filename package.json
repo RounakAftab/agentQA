@@ -12,6 +12,8 @@
     "db:seed": "node --no-warnings --env-file=.env prisma/seed.mjs",
     "db:studio": "prisma studio",
     "mail:start": "maildev --smtp 1025 --web 1080 --ip 127.0.0.1",
+    "agent:worker": "node --no-warnings --env-file=.env agent/worker.mjs",
+    "agent:browsers": "node node_modules/@playwright/mcp/cli.js install-browser chromium",
     "db:wipe": "node --env-file=.env scripts/wipe.mjs",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate && prisma migrate deploy && next build",
@@ -19,6 +21,8 @@
     "db:seed:prod": "node --no-warnings --env-file=.env.production prisma/seed.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.309",
+    "@playwright/mcp": "^0.0.83",
     "@prisma/client": "^6.19.3",
     "lucide-react": "^1.61.0",
     "next": "16.4.2",
@@ -26,7 +30,8 @@
     "prisma": "^6.19.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "recharts": "^3.10.1"
+    "recharts": "^3.10.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "embedded-postgres": "^17.10.0-beta.17",

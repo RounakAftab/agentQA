@@ -45,5 +45,8 @@ next-env.d.ts
 !.env.example
 .mail-outbox
 
+# QA Agent checkouts of project test repositories
+/.agent-workspaces
+
 # production secrets for one-off commands (never commit)
 .env.production

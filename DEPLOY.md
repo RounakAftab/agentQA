@@ -143,3 +143,8 @@ folder under `prisma/migrations`.
   (`pg_dump` with the direct connection string).
 - **Custom domain:** add it in Vercel, then change `APP_URL` so invitation links use it.
 - **Rotating `SESSION_SECRET`** signs everyone out.
+- **QA Agent worker:** Vercel serves the QA Agent pages and API, but it cannot run the worker, which
+  needs a browser and runs for minutes per ticket. Run `npm run agent:worker` on any always-on
+  machine (a small VM, a container, or a spare computer) with the same `DATABASE_URL` as production
+  plus the QA Agent settings from `.env.example`. Install browsers there with `npm run agent:browsers`.
+  Add `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN` to Vercel too, so the app can list tickets.

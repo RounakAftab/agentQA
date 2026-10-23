@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
 
 // Children before parents so foreign keys never block a delete.
 const MODELS = [
-  'passwordToken', 'comment', 'approval', 'cIFailure', 'cIRun', 'workflowCheckpoint', 'workflowRun',
+  'agentRunEvent', 'agentRun', 'agentWorker', 'passwordToken', 'comment', 'approval', 'cIFailure', 'cIRun', 'workflowCheckpoint', 'workflowRun',
   'testCase', 'requirement', 'projectMember', 'auditEvent', 'project', 'user',
 ];
 

@@ -1,5 +1,6 @@
 // Validation shared by the forms (instant feedback) and the API (the real enforcement).
 import { ROLES } from './roles.js';
+import { PROJECT_KEY_PATTERN } from './agentSteps.js';
 
 // Local part: common RFC 5322 characters. Domain: dot-separated labels, TLD of 2+ letters.
 const EMAIL_PATTERN =
@@ -56,7 +57,7 @@ export function validateUserInput({ name, email, role }) {
   return { values, errors };
 }
 
-function validateUrl(value, { required, label }) {
+function validateUrl(value, { required, label, example = 'https://github.com/org/repo' }) {
   const raw = String(value ?? '').trim();
   if (!raw) return required ? { error: `${label} is required` } : { value: '' };
   if (raw.length > 300) return { error: `${label} is too long` };
@@ -65,7 +66,7 @@ function validateUrl(value, { required, label }) {
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname.includes('.')) throw new Error('bad');
     return { value: raw };
   } catch {
-    return { error: `${label} must be a full link such as https://github.com/org/repo` };
+    return { error: `${label} must be a full link such as ${example}` };
   }
 }
 
@@ -86,6 +87,14 @@ export function validateProjectInput(input) {
   const autoRepo = validateUrl(input.automationRepoUrl, { required: false, label: 'Test repository link' });
   if (autoRepo.error) errors.automationRepoUrl = autoRepo.error;
   else values.automationRepoUrl = autoRepo.value;
+
+  const appUrl = validateUrl(input.appBaseUrl, { required: false, label: 'App link', example: 'https://staging.your-app.com' });
+  if (appUrl.error) errors.appBaseUrl = appUrl.error;
+  else values.appBaseUrl = appUrl.value || null;
+
+  const jiraKey = String(input.jiraProjectKey ?? '').trim().toUpperCase();
+  if (jiraKey && !PROJECT_KEY_PATTERN.test(jiraKey)) errors.jiraProjectKey = 'Use the Jira project key, such as SCRUM';
+  else values.jiraProjectKey = jiraKey || null;
 
   const description = String(input.description ?? '').trim();
   if (description.length > 500) errors.description = 'Description must be 500 characters or fewer';

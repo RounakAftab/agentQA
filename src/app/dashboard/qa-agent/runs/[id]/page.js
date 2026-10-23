@@ -1,0 +1,228 @@
+'use client';
+
+import { use, Suspense, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import Header from '@/components/Header';
+import { useCurrentUser } from '@/lib/teamStore';
+import { formatDateTime, formatDuration, formatTime } from '@/lib/format';
+import { AGENT_STEPS } from '@/lib/agentSteps';
+import { useAgentRun, cancelAgentRun, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  XCircle,
+  Circle,
+  Loader2,
+  ExternalLink,
+  GitPullRequest,
+  Square,
+  AlertCircle,
+  ListChecks,
+  FileCode2,
+  ScrollText,
+} from 'lucide-react';
+import styles from './page.module.css';
+
+const OPERATOR_ROLES = ['Admin', 'QA Lead', 'QA Engineer'];
+
+function stepStates(run) {
+  const current = AGENT_STEPS.findIndex((s) => s.id === run.step);
+  return AGENT_STEPS.map((s, i) => {
+    if (run.status === 'PASSED') return 'done';
+    if (run.status === 'QUEUED' || current === -1) return 'pending';
+    if (i < current) return 'done';
+    if (i > current) return 'pending';
+    if (run.status === 'RUNNING') return 'active';
+    return run.status === 'FAILED' ? 'failed' : 'stopped';
+  });
+}
+
+const STEP_ICON = {
+  done: <CheckCircle2 size={18} className={styles.iconDone} />,
+  active: <Loader2 size={18} className={`animate-spin ${styles.iconActive}`} />,
+  failed: <XCircle size={18} className={styles.iconFailed} />,
+  stopped: <Square size={16} className={styles.iconPending} />,
+  pending: <Circle size={18} className={styles.iconPending} />,
+};
+
+function RunDetail({ params }) {
+  const { id } = use(params);
+  const { run, loaded, error, refresh } = useAgentRun(id);
+  const me = useCurrentUser();
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+  const logEndRef = useRef(null);
+  const eventCount = run?.events.length ?? 0;
+
+  useEffect(() => {
+    if (eventCount && logEndRef.current) logEndRef.current.scrollIntoView({ block: 'nearest' });
+  }, [eventCount]);
+
+  if (!loaded) {
+    return (
+      <>
+        <Header title="QA Agent run" />
+        <div className={styles.content}>Loading run…</div>
+      </>
+    );
+  }
+  if (!run) {
+    return (
+      <>
+        <Header title="Run not found" />
+        <div className={styles.content}>
+          <p>{error || 'This run does not exist.'}</p>
+          <Link href="/dashboard/qa-agent" className="btn btn-primary">Back to QA Agent</Link>
+        </div>
+      </>
+    );
+  }
+
+  const status = RUN_STATUS[run.status];
+  const states = stepStates(run);
+  const active = isRunActive(run);
+  const canCancel = active && !run.cancelRequested && OPERATOR_ROLES.includes(me?.role);
+  const duration =
+    run.startedAt && Math.round(((run.finishedAt ? new Date(run.finishedAt) : new Date()) - new Date(run.startedAt)) / 1000);
+
+  const cancel = async () => {
+    setCancelling(true);
+    setCancelError('');
+    const result = await cancelAgentRun(run.id);
+    setCancelling(false);
+    if (!result.ok) setCancelError(result.data.error ?? 'Could not cancel the run');
+    refresh();
+  };
+
+  return (
+    <>
+      <Header title={`${run.issueKey} · QA Agent`} subtitle={run.issueSummary || undefined} />
+      <div className={styles.content}>
+        <Link href="/dashboard/qa-agent" className={styles.backLink}>
+          <ArrowLeft size={16} /> Back to QA Agent
+        </Link>
+
+        <div className={styles.topBar}>
+          <div className={styles.topMeta}>
+            <span className={`badge badge-${status.color}`}>{run.cancelRequested && active ? 'Cancelling…' : status.label}</span>
+            {run.projectName && <span className={styles.meta}>{run.projectName}</span>}
+            {run.startedBy && <span className={styles.meta}>Started by {run.startedBy.name}</span>}
+            <span className={styles.meta}>Queued {formatDateTime(run.queuedAt)}</span>
+            {duration != null && <span className={styles.meta}>{formatDuration(duration)}</span>}
+            {run.testAttempts > 0 && <span className={styles.meta}>{run.testAttempts} test run(s)</span>}
+            {run.costUsd != null && <span className={styles.meta}>${run.costUsd.toFixed(2)}</span>}
+          </div>
+          <div className={styles.topActions}>
+            {run.issueUrl && (
+              <a href={run.issueUrl} target="_blank" rel="noopener" className="btn btn-secondary btn-sm">
+                Jira <ExternalLink size={13} />
+              </a>
+            )}
+            {run.prUrl && (
+              <a href={run.prUrl} target="_blank" rel="noopener" className="btn btn-secondary btn-sm">
+                <GitPullRequest size={14} /> Pull request
+              </a>
+            )}
+            {canCancel && (
+              <button className="btn btn-danger btn-sm" onClick={cancel} disabled={cancelling} id="btn-cancel-run">
+                {cancelling ? <Loader2 size={14} className="animate-spin" /> : <Square size={13} />} Cancel
+              </button>
+            )}
+          </div>
+        </div>
+
+        {cancelError && (
+          <div className={`${styles.alert} ${styles.alertDanger}`} role="alert">
+            <AlertCircle size={16} /> {cancelError}
+          </div>
+        )}
+        {run.error && (
+          <div className={`${styles.alert} ${run.status === 'CANCELLED' ? styles.alertWarning : styles.alertDanger}`} role="alert">
+            <AlertCircle size={16} /> <span>{run.error}</span>
+          </div>
+        )}
+        {run.status === 'PASSED' && (
+          <div className={`${styles.alert} ${styles.alertSuccess}`} role="status">
+            <CheckCircle2 size={16} /> Test verified, note appended and {run.issueKey} moved to Done.
+          </div>
+        )}
+        {run.status === 'QUEUED' && (
+          <div className={`${styles.alert} ${styles.alertInfo}`} role="status">
+            <Loader2 size={16} className="animate-spin" /> Waiting for a worker to pick this run up.
+          </div>
+        )}
+
+        <div className={styles.grid}>
+          <section className={`card ${styles.panel}`}>
+            <h3 className={styles.panelTitle}>Pipeline</h3>
+            <ol className={styles.steps}>
+              {AGENT_STEPS.map((s, i) => (
+                <li key={s.id} className={`${styles.step} ${styles[`step_${states[i]}`]}`}>
+                  {STEP_ICON[states[i]]}
+                  <span>{s.label}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section className={`card ${styles.panel}`}>
+            <h3 className={styles.panelTitle}>
+              <ListChecks size={16} /> Test plan
+            </h3>
+            {run.testPlan ? (
+              <div className={styles.plan}>
+                <p className={styles.flow}>{run.testPlan.flow}</p>
+                <h4 className={styles.subTitle}>Steps</h4>
+                <ol className={styles.planList}>
+                  {run.testPlan.steps.map((s, i) => <li key={i}>{s}</li>)}
+                </ol>
+                <h4 className={styles.subTitle}>Acceptance criteria</h4>
+                <ul className={styles.planList}>
+                  {run.testPlan.acceptanceCriteria.map((c, i) => <li key={i}>{c}</li>)}
+                </ul>
+              </div>
+            ) : (
+              <p className={styles.empty}>The agent has not submitted a plan yet.</p>
+            )}
+          </section>
+        </div>
+
+        <section className={`card ${styles.panel}`}>
+          <h3 className={styles.panelTitle}>
+            <FileCode2 size={16} /> {run.specPath ?? 'Spec'}
+            {run.verifiedPass && <span className="badge badge-success">Verified</span>}
+          </h3>
+          {run.specContent ? <pre className={styles.code}>{run.specContent}</pre> : <p className={styles.empty}>No spec written yet.</p>}
+        </section>
+
+        <section className={`card ${styles.panel}`}>
+          <h3 className={styles.panelTitle}>
+            <ScrollText size={16} /> Activity
+          </h3>
+          {run.events.length === 0 ? (
+            <p className={styles.empty}>Nothing logged yet.</p>
+          ) : (
+            <div className={styles.log}>
+              {run.events.map((e) => (
+                <div key={e.id} className={`${styles.logLine} ${styles[`log_${e.level}`] ?? ''}`}>
+                  <span className={styles.logTime}>{formatTime(e.at)}</span>
+                  <span className={styles.logStep}>{e.step}</span>
+                  <span className={styles.logMessage}>{e.message}</span>
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
+          )}
+        </section>
+      </div>
+    </>
+  );
+}
+
+export default function QaAgentRunPage({ params }) {
+  return (
+    <Suspense fallback={<div className={styles.content}>Loading run…</div>}>
+      <RunDetail params={params} />
+    </Suspense>
+  );
+}

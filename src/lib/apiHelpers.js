@@ -69,6 +69,16 @@ export async function requireProjectManager() {
   return result;
 }
 
+// Admins, QA Leads and QA Engineers start and cancel QA Agent runs.
+export async function requireAgentOperator() {
+  const result = await requireUser();
+  if (result.response) return result;
+  if (!['ADMIN', 'QA_LEAD', 'QA_ENGINEER'].includes(result.user.role)) {
+    return { response: json({ error: 'Only administrators, QA leads and QA engineers can run the QA Agent' }, 403) };
+  }
+  return result;
+}
+
 // True when changing or removing `user` would leave the platform without an active admin.
 export async function isLastActiveAdmin(user) {
   if (user.role !== 'ADMIN' || user.deletedAt || user.disabled || !user.passwordHash) return false;
