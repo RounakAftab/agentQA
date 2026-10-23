@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import { useCurrentUser } from '@/lib/teamStore';
 import { formatDateTime, formatDuration, formatTime } from '@/lib/format';
-import { AGENT_STEPS } from '@/lib/agentSteps';
+import { AGENT_STEPS, stepLabel } from '@/lib/agentSteps';
 import { useAgentRun, cancelAgentRun, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
 import {
   ArrowLeft,
@@ -20,14 +20,29 @@ import {
   ListChecks,
   FileCode2,
   ScrollText,
+  Download,
+  MinusCircle,
 } from 'lucide-react';
 import styles from './page.module.css';
 
 const OPERATOR_ROLES = ['Admin', 'QA Lead', 'QA Engineer'];
 
-function stepStates(run) {
+// Short names for the activity log, e.g. "jira.read" -> "Read requirement" for a manual run.
+const LOG_NAMES = { workspace: 'Test project', agent: 'Agent', verify: 'Verify', publish: 'Publish', done: 'Finished' };
+function logStepLabel(id, source) {
+  if (LOG_NAMES[id]) return LOG_NAMES[id];
+  const step = AGENT_STEPS.find((s) => s.id === id);
+  return step ? stepLabel(step, source).replace(/ and .*$/, '') : id;
+}
+
+// Jira-only steps are left out for requirements written in AgentQA.
+const stepsFor = (run) => AGENT_STEPS.filter((s) => !(s.jiraOnly && run.source === 'manual'));
+
+function stepStates(run, steps) {
   const current = AGENT_STEPS.findIndex((s) => s.id === run.step);
-  return AGENT_STEPS.map((s, i) => {
+  return steps.map((s) => {
+    const i = AGENT_STEPS.indexOf(s);
+    if (run.skippedSteps.includes(s.id)) return 'skipped';
     if (run.status === 'PASSED') return 'done';
     if (run.status === 'QUEUED' || current === -1) return 'pending';
     if (i < current) return 'done';
@@ -42,6 +57,7 @@ const STEP_ICON = {
   active: <Loader2 size={18} className={`animate-spin ${styles.iconActive}`} />,
   failed: <XCircle size={18} className={styles.iconFailed} />,
   stopped: <Square size={16} className={styles.iconPending} />,
+  skipped: <MinusCircle size={18} className={styles.iconPending} />,
   pending: <Circle size={18} className={styles.iconPending} />,
 };
 
@@ -79,7 +95,16 @@ function RunDetail({ params }) {
   }
 
   const status = RUN_STATUS[run.status];
-  const states = stepStates(run);
+  const steps = stepsFor(run);
+  const states = stepStates(run, steps);
+  const isJira = run.source !== 'manual';
+
+  const downloadSpec = () => {
+    const url = URL.createObjectURL(new Blob([run.specContent], { type: 'text/plain' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: run.specPath.split('/').pop() });
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const active = isRunActive(run);
   const canCancel = active && !run.cancelRequested && OPERATOR_ROLES.includes(me?.role);
   const duration =
@@ -143,7 +168,10 @@ function RunDetail({ params }) {
         )}
         {run.status === 'PASSED' && (
           <div className={`${styles.alert} ${styles.alertSuccess}`} role="status">
-            <CheckCircle2 size={16} /> Test verified, note appended and {run.issueKey} moved to Done.
+            <CheckCircle2 size={16} />
+            {isJira
+              ? `Test verified, note appended and ${run.issueKey} moved to Done.`
+              : `Test verified and saved${run.prUrl ? ' with a pull request' : ''}. Download it below${run.prUrl ? ' or review the pull request' : ''}.`}
           </div>
         )}
         {run.status === 'QUEUED' && (
@@ -156,10 +184,11 @@ function RunDetail({ params }) {
           <section className={`card ${styles.panel}`}>
             <h3 className={styles.panelTitle}>Pipeline</h3>
             <ol className={styles.steps}>
-              {AGENT_STEPS.map((s, i) => (
+              {steps.map((s, i) => (
                 <li key={s.id} className={`${styles.step} ${styles[`step_${states[i]}`]}`}>
                   {STEP_ICON[states[i]]}
-                  <span>{s.label}</span>
+                  <span>{stepLabel(s, run.source)}</span>
+                  {states[i] === 'skipped' && <span className={styles.skippedTag}>Skipped</span>}
                 </li>
               ))}
             </ol>
@@ -191,6 +220,11 @@ function RunDetail({ params }) {
           <h3 className={styles.panelTitle}>
             <FileCode2 size={16} /> {run.specPath ?? 'Spec'}
             {run.verifiedPass && <span className="badge badge-success">Verified</span>}
+            {run.specContent && (
+              <button className={`btn btn-secondary btn-sm ${styles.titleAction}`} onClick={downloadSpec} id="btn-download-spec">
+                <Download size={14} /> Download
+              </button>
+            )}
           </h3>
           {run.specContent ? <pre className={styles.code}>{run.specContent}</pre> : <p className={styles.empty}>No spec written yet.</p>}
         </section>
@@ -206,7 +240,7 @@ function RunDetail({ params }) {
               {run.events.map((e) => (
                 <div key={e.id} className={`${styles.logLine} ${styles[`log_${e.level}`] ?? ''}`}>
                   <span className={styles.logTime}>{formatTime(e.at)}</span>
-                  <span className={styles.logStep}>{e.step}</span>
+                  <span className={styles.logStep} title={e.step}>{logStepLabel(e.step, run.source)}</span>
                   <span className={styles.logMessage}>{e.message}</span>
                 </div>
               ))}

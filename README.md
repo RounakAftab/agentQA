@@ -51,16 +51,26 @@ Copy `.env.example` to `.env` and fill it in. Settings are explained in [README-
 
 ## QA Agent
 
-The **QA Agent** menu turns Jira tickets into Playwright tests. Pick a ticket (or type
-`pick up SCRUM-12`) and a worker runs these steps:
+The **QA Agent** menu turns requirements into Playwright tests. A project needs only a name;
+each connection adds more:
 
-1. Reads the ticket and moves it to **In Progress**.
-2. Checks out the project's test repository on a new `qa/scrum-12` branch.
+| Connection | Without it | With it |
+|---|---|---|
+| Jira | Write or paste requirements in AgentQA (`REQ-1`, `REQ-2`, ...) | Also pick up Jira tickets, which move to In Progress and Done |
+| App link (Test environment) | Runs can't start | Specs are written and verified against the live site |
+| Test repository (GitHub) | Specs are saved in AgentQA for download | Specs open as draft pull requests |
+
+Run a requirement, or pick up a ticket (or type `pick up SCRUM-12`), and a worker runs these steps:
+
+1. Reads the requirement. For a Jira ticket it also moves the ticket to **In Progress**.
+2. Checks out the test repository on a new `qa/scrum-12` branch, or prepares a blank Playwright
+   project when there is none.
 3. A Claude agent extracts the steps and acceptance criteria, inspects the live app in a headless
    browser (Playwright MCP), writes `tests/generated/scrum_12.spec.ts` and runs it until it passes.
 4. The worker re-runs the spec itself. Only a pass here counts.
-5. Commits the spec, pushes the branch and opens a draft pull request.
-6. Appends `✅ Automation test created: scrum_12.spec.ts` to the ticket description and moves it to **Done**.
+5. With a test repository: commits the spec, pushes the branch and opens a draft pull request.
+6. Saves the test case. For a Jira ticket it appends `✅ Automation test created: scrum_12.spec.ts`
+   to the description and moves the ticket to **Done**.
 
 If any step fails, the ticket stays In Progress, the run page shows why, and the worker adds a Jira
 comment. These rules are checked in code, not just in the prompt: role-based selectors only, no

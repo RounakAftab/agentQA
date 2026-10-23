@@ -23,13 +23,18 @@ import {
   Activity,
   TestTubes,
   CheckSquare,
-  Workflow,
   Clock,
   TrendingUp,
   Users,
   Pencil,
   Trash2,
   Loader2,
+  Bot,
+  FileText,
+  MonitorPlay,
+  GitPullRequest,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react';
 import styles from './page.module.css';
 
@@ -39,7 +44,7 @@ function ProjectDetailContent({ params }) {
   const { projects, loaded } = useProjects();
   const me = useCurrentUser();
   const store = useWorkflowStore();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(false); // false, or the form section to open
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -111,9 +116,11 @@ function ProjectDetailContent({ params }) {
               {project.jiraProjectKey && <span className={styles.techTag}>Jira: {project.jiraProjectKey}</span>}
             </div>
             <div className={styles.repoLinks}>
-              <a href={project.repoUrl} className={styles.repoLink} target="_blank" rel="noopener">
-                <GitBranch size={14} /> Source Code <ExternalLink size={12} />
-              </a>
+              {project.repoUrl && (
+                <a href={project.repoUrl} className={styles.repoLink} target="_blank" rel="noopener">
+                  <GitBranch size={14} /> Source Code <ExternalLink size={12} />
+                </a>
+              )}
               {project.automationRepoUrl && (
                 <a href={project.automationRepoUrl} className={styles.repoLink} target="_blank" rel="noopener">
                   <TestTubes size={14} /> Test Repo <ExternalLink size={12} />
@@ -124,7 +131,7 @@ function ProjectDetailContent({ params }) {
           <div className={styles.headerActions}>
             {canManage && (
               <>
-                <button className="btn btn-secondary" onClick={() => setEditing(true)} id="edit-project-btn">
+                <button className="btn btn-secondary" onClick={() => setEditing('general')} id="edit-project-btn">
                   <Pencil size={16} /> Edit
                 </button>
                 <button className="btn btn-secondary" onClick={() => setConfirmingDelete(true)} id="delete-project-btn">
@@ -132,11 +139,13 @@ function ProjectDetailContent({ params }) {
                 </button>
               </>
             )}
-            <Link href="/dashboard/workflow" className="btn btn-primary">
-              <Workflow size={16} /> Run AI Workflow
+            <Link href="/dashboard/qa-agent" className="btn btn-primary">
+              <Bot size={16} /> Open QA Agent
             </Link>
           </div>
         </div>
+
+        <Readiness project={project} canManage={canManage} onSetUp={setEditing} />
 
         {/* Stats Cards */}
         <div className={styles.statsGrid}>
@@ -270,7 +279,7 @@ function ProjectDetailContent({ params }) {
         </div>
       </div>
 
-      {editing && <ProjectFormModal project={project} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />}
+      {editing && <ProjectFormModal project={project} initialSection={editing} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />}
 
       {confirmingDelete && (
         <div className="modal-overlay" onClick={() => !deleting && setConfirmingDelete(false)}>
@@ -295,6 +304,58 @@ function ProjectDetailContent({ params }) {
         </div>
       )}
     </>
+  );
+}
+
+// What the QA Agent can do for this project, with a shortcut to set up what's missing.
+function Readiness({ project, canManage, onSetUp }) {
+  const items = [
+    {
+      icon: FileText,
+      label: 'Requirements',
+      ok: true,
+      detail: project.jiraConnected ? `Written in AgentQA, and Jira ${project.jiraProjectKey}` : 'Written in AgentQA',
+      action: !project.jiraConnected && { label: 'Connect Jira', section: 'jira' },
+    },
+    {
+      icon: MonitorPlay,
+      label: 'Automation',
+      ok: Boolean(project.appBaseUrl),
+      detail: project.appBaseUrl ? `Tests run against ${project.appBaseUrl.replace(/^https?:\/\//, '')}` : 'Add the app link the tests run against',
+      action: !project.appBaseUrl && { label: 'Add app link', section: 'testing' },
+    },
+    {
+      icon: GitPullRequest,
+      label: 'Delivery',
+      ok: true,
+      detail: project.automationRepoUrl ? 'Specs open as pull requests in the test repository' : 'Specs are saved in AgentQA for download',
+      action: !project.automationRepoUrl && { label: 'Add test repo', section: 'repos' },
+    },
+  ];
+  return (
+    <div className={styles.readiness}>
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <div key={item.label} className={styles.readyItem}>
+            <span className={item.ok ? styles.readyOk : styles.readyMissing}>
+              {item.ok ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+            </span>
+            <div className={styles.readyText}>
+              <span className={styles.readyLabel}>
+                <Icon size={13} /> {item.label}
+              </span>
+              <span className={styles.readyDetail}>{item.detail}</span>
+            </div>
+            {canManage && item.action && (
+              <button className="btn btn-ghost btn-sm" onClick={() => onSetUp(item.action.section)}>
+                {item.action.label}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

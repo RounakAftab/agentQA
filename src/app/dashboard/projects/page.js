@@ -130,7 +130,13 @@ export default function ProjectsPage() {
                   <div className={styles.cardFooter}>
                     <div className={styles.repoLink}>
                       <GitBranch size={13} />
-                      <span>{project.repoUrl.split('/').filter(Boolean).pop()}</span>
+                      <span>
+                        {project.repoUrl
+                          ? project.repoUrl.split('/').filter(Boolean).pop()
+                          : project.jiraProjectKey
+                            ? `Jira ${project.jiraProjectKey}`
+                            : 'No repository'}
+                      </span>
                     </div>
                     {project.pendingApprovals > 0 && (
                       <span className="badge badge-warning">{project.pendingApprovals} pending</span>

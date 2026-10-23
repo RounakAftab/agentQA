@@ -131,6 +131,27 @@ export function validateJiraFields(input, errors, { tokenSaved = false } = {}) {
   return values;
 }
 
+export const REQUIREMENT_PRIORITIES = ['low', 'medium', 'high', 'critical'];
+
+// A requirement written in AgentQA (instead of a Jira ticket). Returns { values, errors }.
+export function validateRequirementInput(input) {
+  const errors = {};
+  const values = {};
+  const title = String(input.title ?? '').trim().replace(/\s+/g, ' ');
+  if (title.length < 3) errors.title = 'Give the requirement a title of at least 3 characters';
+  else if (title.length > 200) errors.title = 'Title must be 200 characters or fewer';
+  else values.title = title;
+
+  const description = String(input.description ?? '').trim();
+  if (description.length < 20) errors.description = 'Describe the user flow and what should happen (at least 20 characters)';
+  else if (description.length > 20000) errors.description = 'Requirement text must be 20,000 characters or fewer';
+  else values.description = description;
+
+  const priority = String(input.priority ?? 'medium').toLowerCase();
+  values.priority = REQUIREMENT_PRIORITIES.includes(priority) ? priority : 'medium';
+  return { values, errors };
+}
+
 // Validates the create/edit project form. Returns { values, errors }.
 export function validateProjectInput(input) {
   const errors = {};
@@ -141,9 +162,9 @@ export function validateProjectInput(input) {
   else if (name.length < 2 || name.length > 100) errors.name = 'Project name must be 2 to 100 characters';
   else values.name = name;
 
-  const repo = validateUrl(input.repoUrl, { required: true, label: 'Repository link' });
+  const repo = validateUrl(input.repoUrl, { required: false, label: 'Source repository link' });
   if (repo.error) errors.repoUrl = repo.error;
-  else values.repoUrl = repo.value;
+  else values.repoUrl = repo.value || null;
 
   const autoRepo = validateUrl(input.automationRepoUrl, { required: false, label: 'Test repository link' });
   if (autoRepo.error) errors.automationRepoUrl = autoRepo.error;

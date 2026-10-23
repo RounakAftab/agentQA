@@ -66,6 +66,7 @@ model User {
   comments       Comment[]
   passwordTokens PasswordToken[]
   agentRuns      AgentRun[]
+  requirements   Requirement[]
 }
 
 model PasswordToken {
@@ -86,7 +87,7 @@ model Project {
   id                   String        @id @default(cuid())
   name                 String
   description          String
-  repoUrl              String
+  repoUrl              String? // optional: a project can be Jira-only or manual
   automationRepoUrl    String
   defaultBranch        String        @default("main")
   language             String
@@ -127,21 +128,30 @@ model ProjectMember {
   @@unique([userId, projectId])
 }
 
+// Something to test: a Jira ticket (key "SCRUM-12") or a requirement written in AgentQA
+// (key "REQ-3"). The QA Agent runs against either.
 model Requirement {
   id             String   @id @default(cuid())
   projectId      String
+  key            String? // "SCRUM-12" or "REQ-3"; unique within the project
   title          String
-  source         String // e.g. "GitHub Issue #241"
-  sourceUrl      String
+  description    String?  @db.Text // the requirement text for manual requirements
+  source         String // "jira" | "manual" (older rows hold free text)
+  sourceUrl      String?
   status         String   @default("analyzed")
   priority       String   @default("medium")
   generatedTests Int      @default(0)
+  createdById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
   testCases    TestCase[]
   workflowRuns WorkflowRun[]
+  agentRuns    AgentRun[]
+
+  @@unique([projectId, key])
 }
 
 model TestCase {
@@ -280,7 +290,10 @@ enum AgentRunStatus {
 model AgentRun {
   id              String         @id @default(cuid())
   projectId       String
-  issueKey        String // "SCRUM-12"
+  issueKey        String // requirement key: "SCRUM-12" (Jira) or "REQ-3" (manual)
+  source          String         @default("jira") // "jira" | "manual"
+  requirementId   String?
+  skippedSteps    String[]       @default([]) // steps that did not apply, e.g. no Jira or no test repo
   issueSummary    String         @default("")
   issueSnapshot   Json? // the ticket as read when the run started
   testPlan        Json? // { flow, steps[], acceptanceCriteria[] } submitted by the agent
@@ -302,9 +315,10 @@ model AgentRun {
   startedAt       DateTime?
   finishedAt      DateTime?
 
-  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  startedBy User?           @relation(fields: [startedById], references: [id], onDelete: SetNull)
-  events    AgentRunEvent[]
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  startedBy   User?           @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  requirement Requirement?    @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  events      AgentRunEvent[]
 
   @@index([status, queuedAt])
   @@index([projectId, issueKey])

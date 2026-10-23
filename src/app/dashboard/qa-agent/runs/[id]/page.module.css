@@ -206,7 +206,7 @@
 
 .logLine {
   display: grid;
-  grid-template-columns: 64px 120px minmax(0, 1fr);
+  grid-template-columns: 64px 150px minmax(0, 1fr);
   gap: var(--space-3);
   padding: 3px var(--space-2);
   border-radius: var(--radius-sm);
@@ -252,4 +252,18 @@
   .logStep {
     display: none;
   }
+}
+
+.step_skipped {
+  color: var(--slate-400);
+}
+
+.skippedTag {
+  font-size: 11px;
+  color: var(--slate-400);
+  margin-left: auto;
+}
+
+.titleAction {
+  margin-left: auto;
 }

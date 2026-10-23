@@ -211,7 +211,7 @@ export default function ProjectFormModal({ project, onClose, onSaved, initialSec
         <div className="modal-header">
           <div>
             <h3 id="project-form-title">{editing ? `Edit ${project.name}` : 'New project'}</h3>
-            <p className={styles.subtitle}>Repositories, Jira and the test environment the QA Agent works with.</p>
+            <p className={styles.subtitle}>Only a name is required. Add Jira, a test environment or GitHub when you need them.</p>
           </div>
           <button type="button" className="btn btn-ghost btn-icon" onClick={close} aria-label="Close">
             <X size={18} />
@@ -275,13 +275,18 @@ export default function ProjectFormModal({ project, onClose, onSaved, initialSec
             )}
 
             {section === 'repos' && (
-              <Section title="Repositories" description="Where the application code lives, and where its automated tests are committed.">
-                {field('repoUrl', 'Source repository', { required: true, placeholder: 'https://github.com/your-org/your-app', maxLength: 300, inputMode: 'url' })}
+              <Section title="Repositories" description="Optional. Connect GitHub if you want generated tests delivered as pull requests.">
+                {field('repoUrl', 'Source repository', {
+                  placeholder: 'https://github.com/your-org/your-app',
+                  maxLength: 300,
+                  inputMode: 'url',
+                  hint: 'Optional. A link to the application code, for reference.',
+                })}
                 {field('automationRepoUrl', 'Test repository', {
                   placeholder: 'https://github.com/your-org/your-app-tests',
                   maxLength: 300,
                   inputMode: 'url',
-                  hint: 'The QA Agent commits generated Playwright specs here. It needs @playwright/test installed.',
+                  hint: 'Optional. With a test repository, specs open as pull requests (it needs @playwright/test installed). Without one, specs are saved in AgentQA for download.',
                 })}
                 <div className={styles.row3}>
                   {field('language', 'Language', { placeholder: 'e.g. TypeScript', maxLength: 60 })}
@@ -292,7 +297,7 @@ export default function ProjectFormModal({ project, onClose, onSaved, initialSec
             )}
 
             {section === 'jira' && (
-              <Section title="Jira" description="Connect a Jira Cloud project so the QA Agent can read tickets, update their status and add notes.">
+              <Section title="Jira" description="Optional. Connect a Jira Cloud project so the QA Agent can pick up tickets, update their status and add notes. Without Jira, write requirements in AgentQA.">
                 <JiraStatusCard test={jiraTest} filled={jiraFilled} />
 
                 {field('jiraBaseUrl', 'Jira site', {
@@ -392,7 +397,7 @@ export default function ProjectFormModal({ project, onClose, onSaved, initialSec
             )}
 
             {section === 'testing' && (
-              <Section title="Test environment" description="The site the generated Playwright tests run against, and the account they sign in with.">
+              <Section title="Test environment" description="The site the generated Playwright tests run against, and the account they sign in with. Needed to automate tests.">
                 {field('appBaseUrl', 'App link', {
                   placeholder: 'https://staging.your-app.com',
                   maxLength: 300,

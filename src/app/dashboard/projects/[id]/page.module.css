@@ -194,3 +194,64 @@
   .statsGrid { grid-template-columns: 1fr; }
   .projectHeader { flex-direction: column; gap: var(--space-4); }
 }
+
+/* QA Agent readiness */
+.readiness {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.readyItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+}
+
+.readyOk {
+  color: var(--success-600);
+  display: inline-flex;
+}
+
+.readyMissing {
+  color: var(--slate-300);
+  display: inline-flex;
+}
+
+.readyText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.readyLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--slate-500);
+}
+
+.readyDetail {
+  font-size: var(--text-sm);
+  color: var(--slate-800);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1024px) {
+  .readiness {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

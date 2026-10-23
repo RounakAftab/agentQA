@@ -18,8 +18,53 @@ function authedUrl(repoUrl) {
 
 const exists = (p) => fs.access(p).then(() => true, () => false);
 
-// Clones (or refreshes) the repository and creates a clean branch from the default branch.
+// Version used for blank test projects (projects without a test repository).
+const PLAYWRIGHT_TEST_VERSION = '1.64.1';
+
+const BLANK_CONFIG = `import { defineConfig } from '@playwright/test';
+
+// Created by AgentQA for a project without a test repository.
+export default defineConfig({
+  testDir: './tests',
+  timeout: 60_000,
+  use: { baseURL: process.env.BASE_URL, trace: 'retain-on-failure' },
+});
+`;
+
+// A minimal Playwright project, kept between runs so dependencies install only once.
+async function prepareBlankProject(project, log) {
+  const dir = path.join(ROOT, `${project.id}-blank`);
+  await fs.mkdir(path.join(dir, 'tests', 'generated'), { recursive: true });
+  if (!(await exists(path.join(dir, 'package.json')))) {
+    await log('No test repository connected: creating a blank Playwright project');
+    await fs.writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'agentqa-tests', private: true, devDependencies: { '@playwright/test': PLAYWRIGHT_TEST_VERSION } }, null, 2)
+    );
+    await fs.writeFile(path.join(dir, 'playwright.config.ts'), BLANK_CONFIG);
+  }
+  await installDependencies(dir, log);
+  return dir;
+}
+
+// Installs npm dependencies once, then the browser build that project's Playwright expects.
+async function installDependencies(dir, log) {
+  if (!(await exists(path.join(dir, 'package.json')))) return;
+  if (await exists(path.join(dir, 'node_modules'))) return;
+  const hasLock = await exists(path.join(dir, 'package-lock.json'));
+  await log(hasLock ? 'Installing dependencies (npm ci)' : 'Installing dependencies (npm install)');
+  await runOrThrow('npm', [hasLock ? 'ci' : 'install', '--no-audit', '--no-fund'], { cwd: dir, timeoutMs: 15 * 60_000 });
+  if (await exists(path.join(dir, 'node_modules', '@playwright', 'test'))) {
+    await log('Checking the Chromium build for this Playwright version');
+    await runOrThrow('npx', ['playwright', 'install', 'chromium'], { cwd: dir, timeoutMs: 15 * 60_000 });
+  }
+}
+
+// Clones (or refreshes) the test repository on a clean branch from the default branch, or
+// prepares a blank Playwright project when there is none. Returns { dir, hasRepo }.
 export async function prepareWorkspace(project, branch, log) {
+  if (!project.automationRepoUrl) return { dir: await prepareBlankProject(project, log), hasRepo: false };
+
   const dir = path.join(ROOT, project.id);
   const base = project.defaultBranch || 'main';
   const git = (...args) => runOrThrow('git', args, { cwd: dir, timeoutMs: 5 * 60_000 });
@@ -40,17 +85,11 @@ export async function prepareWorkspace(project, branch, log) {
     await fs.appendFile(path.join(dir, '.git', 'info', 'exclude'), '\n.agentqa/\n');
   }
 
-  if (await exists(path.join(dir, 'package.json'))) {
-    if (!(await exists(path.join(dir, 'node_modules')))) {
-      const hasLock = await exists(path.join(dir, 'package-lock.json'));
-      await log(hasLock ? 'Installing dependencies (npm ci)' : 'Installing dependencies (npm install)');
-      await runOrThrow('npm', [hasLock ? 'ci' : 'install', '--no-audit', '--no-fund'], { cwd: dir, timeoutMs: 15 * 60_000 });
-    }
-  }
+  await installDependencies(dir, log);
   if (!(await exists(path.join(dir, 'node_modules', '@playwright', 'test')))) {
-    throw new Error('The test repository has no @playwright/test installed. Add Playwright to it (npm init playwright@latest) and try again.');
+    throw new Error('The test repository has no @playwright/test installed. Add Playwright to it (npm init playwright@latest), or remove the test repository from the project to use a blank one.');
   }
-  return dir;
+  return { dir, hasRepo: true };
 }
 
 // Commits the spec, pushes the branch and opens a draft pull request. Without GITHUB_TOKEN

@@ -109,7 +109,7 @@ export function buildSource(project, requirementTitle, prNumber) {
   const title = requirementTitle.trim();
   const slug = slugify(title);
   const stack = stackFor(project.language || '', title, slug);
-  const repo = (project.automationRepoUrl || project.repoUrl).split('/').filter(Boolean).pop();
+  const repo = (project.automationRepoUrl || project.repoUrl || 'tests').split('/').filter(Boolean).pop();
 
   return {
     id: `${project.id}:${slug}`,

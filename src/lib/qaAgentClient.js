@@ -44,6 +44,7 @@ function usePolling(url, pickActive) {
 }
 
 const runsActive = (data) => data.runs?.some(isActive);
+const requirementsActive = (data) => data.requirements?.some((r) => isActive(r.lastRun));
 const runActive = (data) => isActive(data.run);
 const never = () => false;
 
@@ -80,6 +81,14 @@ export function useJiraIssues(projectId) {
   };
 }
 
+export function useRequirements(projectId) {
+  const { data, loaded, error, refresh } = usePolling(
+    projectId ? `/api/qa-agent/requirements?projectId=${encodeURIComponent(projectId)}` : null,
+    requirementsActive
+  );
+  return { requirements: data?.requirements ?? [], loaded, error, refresh };
+}
+
 async function send(method, url, body) {
   try {
     const res = await fetch(url, {
@@ -93,7 +102,11 @@ async function send(method, url, body) {
   }
 }
 
-export const startAgentRun = ({ projectId, issueKey, summary }) => send('POST', '/api/qa-agent/runs', { projectId, issueKey, summary });
+export const startAgentRun = ({ projectId, issueKey, summary, requirementId }) =>
+  send('POST', '/api/qa-agent/runs', { projectId, issueKey, summary, requirementId });
+export const createRequirement = (projectId, form) => send('POST', '/api/qa-agent/requirements', { ...form, projectId });
+export const updateRequirement = (id, form) => send('PATCH', `/api/qa-agent/requirements/${encodeURIComponent(id)}`, form);
+export const deleteRequirement = (id) => send('DELETE', `/api/qa-agent/requirements/${encodeURIComponent(id)}`);
 export const cancelAgentRun = (id) => send('DELETE', `/api/qa-agent/runs/${encodeURIComponent(id)}`);
 
 export const RUN_STATUS = {
