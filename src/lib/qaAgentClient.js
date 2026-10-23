@@ -55,7 +55,6 @@ export function useAgentRuns(projectId) {
   return {
     runs: data?.runs ?? [],
     worker: data?.worker ?? { online: false, lastSeenAt: null },
-    jiraConfigured: data?.jiraConfigured ?? true,
     loaded,
     error,
     refresh,
@@ -75,7 +74,6 @@ export function useJiraIssues(projectId) {
   return {
     issues: data?.issues ?? [],
     configured: data?.configured ?? true,
-    missingKey: Boolean(data?.missingKey),
     loaded,
     error: error || data?.error || '',
     refresh,

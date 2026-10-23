@@ -1,6 +1,8 @@
 // Server-side project queries. Statistics are computed from real records, so a new
 // project shows zeros and "no data yet" instead of invented numbers.
 import { db } from '@/lib/db';
+import { encryptSecret } from '@/lib/secrets';
+import { isProjectJiraConnected } from '@/lib/jira';
 
 function healthFrom(passRate) {
   if (passRate == null) return 'unknown';
@@ -38,8 +40,17 @@ async function loadProjects(where) {
       defaultBranch: p.defaultBranch,
       language: p.language,
       framework: p.framework,
+      // Secrets never leave the server; the form only learns whether one is saved.
+      jiraBaseUrl: p.jiraBaseUrl,
+      jiraEmail: p.jiraEmail,
+      jiraTokenSet: Boolean(p.jiraApiTokenEnc),
       jiraProjectKey: p.jiraProjectKey,
+      jiraStatusInProgress: p.jiraStatusInProgress,
+      jiraStatusDone: p.jiraStatusDone,
+      jiraConnected: isProjectJiraConnected(p),
       appBaseUrl: p.appBaseUrl,
+      e2eUsername: p.e2eUsername,
+      e2ePasswordSet: Boolean(p.e2ePasswordEnc),
       health: healthFrom(passRate),
       testCoverage: run ? run.coverage : null,
       passRate,
@@ -55,6 +66,18 @@ async function loadProjects(where) {
 }
 
 export const listProjects = () => loadProjects({});
+
+// Turns validated form values into columns, encrypting new secrets. A blank secret keeps the
+// stored one unless the form asked to remove it.
+export function projectData(values) {
+  const { memberIds, jiraApiToken, clearJiraApiToken, e2ePassword, clearE2ePassword, ...fields } = values;
+  const data = { ...fields };
+  if (jiraApiToken) data.jiraApiTokenEnc = encryptSecret(jiraApiToken);
+  else if (clearJiraApiToken) data.jiraApiTokenEnc = null;
+  if (e2ePassword) data.e2ePasswordEnc = encryptSecret(e2ePassword);
+  else if (clearE2ePassword) data.e2ePasswordEnc = null;
+  return { data, memberIds };
+}
 
 export async function getProject(id) {
   const [project] = await loadProjects({ id });

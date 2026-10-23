@@ -2,11 +2,12 @@
 // that breaks them is rejected even if the model ignores its instructions.
 
 // Values that must never appear in a test file.
-const SECRET_ENV = ['E2E_USERNAME', 'E2E_PASSWORD', 'JIRA_API_TOKEN', 'GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'SESSION_SECRET'];
+const SECRET_ENV = ['GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'SESSION_SECRET', 'ENCRYPTION_KEY'];
 
 const count = (text, re) => (text.match(re) ?? []).length;
 
-export function checkSpec(content, plan) {
+// `secrets` are extra values that must not appear, such as the project's test account.
+export function checkSpec(content, plan, secrets = []) {
   const errors = [];
   const warnings = [];
 
@@ -24,6 +25,9 @@ export function checkSpec(content, plan) {
     if (value && value.length >= 4 && content.includes(value)) {
       errors.push(`The value of ${name} is written into the file. Read it from process.env.${name} instead.`);
     }
+  }
+  if (secrets.some((value) => value && value.length >= 4 && content.includes(value))) {
+    errors.push('The test account username or password is written into the file. Read them from process.env.E2E_USERNAME and process.env.E2E_PASSWORD.');
   }
   if (/(password|passwd|secret|token)\w*\s*[:=]\s*['"`][^'"`\s]{3,}['"`]/i.test(content)) {
     errors.push('A credential appears to be hardcoded. Read credentials from process.env (E2E_USERNAME, E2E_PASSWORD).');

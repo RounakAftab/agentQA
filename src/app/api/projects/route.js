@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { json, readJson, recordAudit, requireProjectManager, requireUser } from '@/lib/apiHelpers';
-import { getProject, listProjects } from '@/lib/projects';
+import { getProject, listProjects, projectData } from '@/lib/projects';
 import { validateProjectInput } from '@/lib/validation';
 
 export async function GET() {
@@ -13,14 +13,14 @@ export async function POST(request) {
   const { user, response } = await requireProjectManager();
   if (response) return response;
 
-  const { values, errors } = validateProjectInput(await readJson(request));
+  const { values, errors } = validateProjectInput({ ...(await readJson(request)), jiraTokenSet: false });
   if (Object.keys(errors).length > 0) return json({ error: 'Please fix the highlighted fields', fieldErrors: errors }, 400);
 
   if (await db.project.findFirst({ where: { name: { equals: values.name, mode: 'insensitive' } } })) {
     return json({ error: 'Please fix the highlighted fields', fieldErrors: { name: 'A project with this name already exists' } }, 409);
   }
 
-  const { memberIds, ...fields } = values;
+  const { data: fields, memberIds } = projectData(values);
   const activeMembers = await db.user.findMany({
     where: { id: { in: memberIds }, deletedAt: null },
     select: { id: true },

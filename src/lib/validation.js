@@ -70,6 +70,67 @@ function validateUrl(value, { required, label, example = 'https://github.com/org
   }
 }
 
+// Jira Cloud sites only. Keeping the host to *.atlassian.net also stops the server from being
+// pointed at arbitrary internal addresses. A pasted board or ticket link is reduced to the site.
+export function validateJiraBaseUrl(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return { value: '' };
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.port || url.username || !/^[a-z0-9][a-z0-9-]*\.atlassian\.net$/i.test(url.hostname)) {
+      throw new Error('bad');
+    }
+    return { value: `https://${url.hostname.toLowerCase()}` };
+  } catch {
+    return { error: 'Use your Jira Cloud site address, such as https://your-team.atlassian.net' };
+  }
+}
+
+const STATUS_NAME = /^[^\n\r]{1,60}$/;
+
+// The Jira section of the project form. `tokenSaved` says whether a token is already stored
+// (and kept), so a blank token field means "keep it". Fills `errors`, returns the values.
+export function validateJiraFields(input, errors, { tokenSaved = false } = {}) {
+  const values = {};
+
+  const base = validateJiraBaseUrl(input.jiraBaseUrl);
+  if (base.error) errors.jiraBaseUrl = base.error;
+  else values.jiraBaseUrl = base.value || null;
+
+  const rawEmail = String(input.jiraEmail ?? '').trim();
+  if (rawEmail) {
+    const email = validateEmail(rawEmail);
+    if (email.error) errors.jiraEmail = email.error;
+    else values.jiraEmail = email.value;
+  } else values.jiraEmail = null;
+
+  const token = String(input.jiraApiToken ?? '').trim();
+  if (token.length > 500) errors.jiraApiToken = 'API token is too long';
+  else values.jiraApiToken = token;
+  values.clearJiraApiToken = Boolean(input.clearJiraApiToken);
+
+  const key = String(input.jiraProjectKey ?? '').trim().toUpperCase();
+  if (key && !PROJECT_KEY_PATTERN.test(key)) errors.jiraProjectKey = 'Use the Jira project key, such as SCRUM';
+  else values.jiraProjectKey = key || null;
+
+  for (const field of ['jiraStatusInProgress', 'jiraStatusDone']) {
+    const v = String(input[field] ?? '').trim();
+    if (v && !STATUS_NAME.test(v)) errors[field] = 'Status names are up to 60 characters';
+    else values[field] = v || null;
+  }
+
+  // All or nothing: a half-filled connection can't be used.
+  const hasToken = Boolean(token) || tokenSaved;
+  const filled = [values.jiraBaseUrl, values.jiraEmail, hasToken, values.jiraProjectKey];
+  if (filled.some(Boolean) && !filled.every(Boolean)) {
+    if (!values.jiraBaseUrl && !errors.jiraBaseUrl) errors.jiraBaseUrl = 'Jira site address is required to connect Jira';
+    if (!values.jiraEmail && !errors.jiraEmail) errors.jiraEmail = 'Account email is required to connect Jira';
+    if (!hasToken && !errors.jiraApiToken) errors.jiraApiToken = 'API token is required to connect Jira';
+    if (!values.jiraProjectKey && !errors.jiraProjectKey) errors.jiraProjectKey = 'Project key is required to connect Jira';
+  }
+  return values;
+}
+
 // Validates the create/edit project form. Returns { values, errors }.
 export function validateProjectInput(input) {
   const errors = {};
@@ -92,9 +153,15 @@ export function validateProjectInput(input) {
   if (appUrl.error) errors.appBaseUrl = appUrl.error;
   else values.appBaseUrl = appUrl.value || null;
 
-  const jiraKey = String(input.jiraProjectKey ?? '').trim().toUpperCase();
-  if (jiraKey && !PROJECT_KEY_PATTERN.test(jiraKey)) errors.jiraProjectKey = 'Use the Jira project key, such as SCRUM';
-  else values.jiraProjectKey = jiraKey || null;
+  Object.assign(values, validateJiraFields(input, errors, { tokenSaved: Boolean(input.jiraTokenSet) && !input.clearJiraApiToken }));
+
+  const e2eUsername = String(input.e2eUsername ?? '').trim();
+  if (e2eUsername.length > 200) errors.e2eUsername = 'Username is too long';
+  else values.e2eUsername = e2eUsername || null;
+  const e2ePassword = String(input.e2ePassword ?? '');
+  if (e2ePassword.length > 200) errors.e2ePassword = 'Password is too long';
+  else values.e2ePassword = e2ePassword;
+  values.clearE2ePassword = Boolean(input.clearE2ePassword);
 
   const description = String(input.description ?? '').trim();
   if (description.length > 500) errors.description = 'Description must be 500 characters or fewer';

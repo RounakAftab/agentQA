@@ -13,7 +13,7 @@ const PLAYWRIGHT_MCP = path.resolve(here, '..', 'node_modules', '@playwright', '
 const MAX_TEST_RUNS = Number(process.env.AGENT_MAX_TEST_RUNS) || 6;
 
 // Secrets the model and its subprocesses never need.
-const HIDDEN_ENV = ['DATABASE_URL', 'DIRECT_URL', 'SESSION_SECRET', 'JIRA_API_TOKEN', 'JIRA_EMAIL', 'GITHUB_TOKEN', 'SMTP_PASS', 'E2E_PASSWORD'];
+const HIDDEN_ENV = ['DATABASE_URL', 'DIRECT_URL', 'SESSION_SECRET', 'ENCRYPTION_KEY', 'GITHUB_TOKEN', 'SMTP_PASS', 'E2E_USERNAME', 'E2E_PASSWORD'];
 
 const text = (value) => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }] });
 
@@ -39,7 +39,7 @@ ${issue.description || '(The ticket has no description.)'}`;
 }
 
 // Runs the agent. `ctx` carries the run state and callbacks the tools report through.
-export async function runAgentSession({ workspace, project, issue, specPath, testEnv, abortController, ctx }) {
+export async function runAgentSession({ workspace, project, issue, specPath, testEnv, credentials, abortController, ctx }) {
   let plan = null;
   let testRuns = 0;
   let lastResult = null;
@@ -94,8 +94,8 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
         'The test account for logging in during browser inspection. Never write these values into the spec; the spec must read process.env.E2E_USERNAME and process.env.E2E_PASSWORD.',
         {},
         async () => {
-          if (!process.env.E2E_USERNAME) return text('No test account is configured (E2E_USERNAME is empty).');
-          return text({ username: process.env.E2E_USERNAME, password: process.env.E2E_PASSWORD ?? '' });
+          if (!credentials.username) return text('This project has no test account configured.');
+          return text({ username: credentials.username, password: credentials.password });
         },
         { annotations: { readOnlyHint: true } }
       ),
@@ -105,7 +105,7 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
         { content: z.string().min(20).describe('Complete TypeScript source of the spec file') },
         async ({ content }) => {
           if (!plan) return text('Call submit_test_plan first.');
-          const { errors, warnings } = checkSpec(content, plan);
+          const { errors, warnings } = checkSpec(content, plan, [credentials.username, credentials.password]);
           if (errors.length > 0) {
             await ctx.log('agent', 'warn', `Spec rejected: ${errors.join(' ')}`);
             return { ...text(`Not saved. Fix these problems:\n- ${errors.join('\n- ')}`), isError: true };

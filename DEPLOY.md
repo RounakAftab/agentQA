@@ -147,4 +147,5 @@ folder under `prisma/migrations`.
   needs a browser and runs for minutes per ticket. Run `npm run agent:worker` on any always-on
   machine (a small VM, a container, or a spare computer) with the same `DATABASE_URL` as production
   plus the QA Agent settings from `.env.example`. Install browsers there with `npm run agent:browsers`.
-  Add `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN` to Vercel too, so the app can list tickets.
+  The worker also needs the same `SESSION_SECRET` (or `ENCRYPTION_KEY`) as Vercel, because it decrypts
+  the Jira tokens saved in each project's settings.

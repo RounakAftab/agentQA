@@ -69,9 +69,14 @@ acceptance criterion. A spec that breaks a rule is rejected.
 
 **Setup**
 
-1. Fill in the QA Agent section of `.env` (Jira, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, test account).
-2. On each project, set the **Jira project key**, the **App link for tests** and the **Test repository
-   link**. The test repository must already have `@playwright/test` and a `playwright.config`.
+1. Open **Projects → Edit project**:
+   - **Jira**: enter the Jira Cloud site, account email, API token and project key, then use
+     **Test connection**. Each project can use its own Jira site. The token is stored encrypted
+     and never sent back to the browser.
+   - **Test environment**: set the app link the tests run against and its test account.
+   - **Repositories**: set the test repository. It must already have `@playwright/test` and a
+     `playwright.config`.
+2. Fill in the QA Agent section of `.env` for the worker (`ANTHROPIC_API_KEY`, `GITHUB_TOKEN`).
 3. `npm run agent:browsers` once, then keep `npm run agent:worker` running in a fourth terminal.
 
 The worker needs a UTF-8 database. Clusters created by `npm run db:start` before the QA Agent was

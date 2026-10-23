@@ -2,20 +2,22 @@
 // In Progress before any work, and Done only after the worker's own test run passes.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { getIssue, transitionTo, appendToDescription, addComment } from '../src/lib/jira.js';
+import { jiraForProject, jiraStatusesFor } from '../src/lib/jira.js';
+import { decryptSecret } from '../src/lib/secrets.js';
 import { specPathFor } from '../src/lib/agentSteps.js';
 import { checkSpec } from './guardrails.mjs';
 import { runSpec } from './playwright.mjs';
 import { prepareWorkspace, publishSpec } from './workspace.mjs';
 import { runAgentSession } from './session.mjs';
 
-const STATUS_IN_PROGRESS = process.env.JIRA_STATUS_IN_PROGRESS || 'In Progress';
-const STATUS_DONE = process.env.JIRA_STATUS_DONE || 'Done';
-
 export class CancelledError extends Error {}
 
 export async function runTicket({ db, run, abortController }) {
   const project = await db.project.findUnique({ where: { id: run.projectId } });
+  const jira = jiraForProject(project);
+  const { inProgress: STATUS_IN_PROGRESS, done: STATUS_DONE } = jiraStatusesFor(project);
+  // The project's test account. The agent may type it into the browser; specs must read it from env.
+  const credentials = { username: project.e2eUsername ?? '', password: decryptSecret(project.e2ePasswordEnc) ?? '' };
   const specPath = specPathFor(run.issueKey);
   const specFile = path.basename(specPath);
   const branch = `qa/${run.issueKey.toLowerCase()}`;
@@ -40,14 +42,14 @@ export async function runTicket({ db, run, abortController }) {
 
   // 1. Read the ticket.
   await step('jira.read', `Reading ${run.issueKey} from Jira`);
-  const issue = await getIssue(run.issueKey);
+  const issue = await jira.getIssue(run.issueKey);
   await update({ issueSummary: issue.summary, issueSnapshot: issue, specPath, branch });
   await log('jira.read', 'success', `${issue.key}: ${issue.summary} (status: ${issue.status})`);
   if (issue.statusCategory === 'done') throw new Error(`${issue.key} is already ${issue.status}. Reopen it in Jira to automate it again.`);
 
   // 2. In Progress before any implementation work.
   await step('jira.in_progress');
-  const moved = await transitionTo(issue.key, STATUS_IN_PROGRESS);
+  const moved = await jira.transitionTo(issue.key, STATUS_IN_PROGRESS);
   await log('jira.in_progress', 'success', moved.changed ? `Moved from ${moved.from} to ${STATUS_IN_PROGRESS}` : `Already ${STATUS_IN_PROGRESS}`);
   if (moved.changed) await audit('jira.transitioned', `${moved.from} → ${STATUS_IN_PROGRESS}`);
 
@@ -61,6 +63,8 @@ export async function runTicket({ db, run, abortController }) {
       ...process.env,
       BASE_URL: project.appBaseUrl,
       PLAYWRIGHT_BASE_URL: project.appBaseUrl,
+      E2E_USERNAME: credentials.username,
+      E2E_PASSWORD: credentials.password,
     };
 
     // 4. The agent plans, inspects the page, writes and iterates on the spec.
@@ -71,6 +75,7 @@ export async function runTicket({ db, run, abortController }) {
       issue,
       specPath,
       testEnv,
+      credentials,
       abortController,
       ctx: {
         log,
@@ -94,7 +99,7 @@ export async function runTicket({ db, run, abortController }) {
     await step('verify', 'Re-running the spec to confirm it passes');
     const content = await fs.readFile(path.join(workspace, specPath), 'utf8').catch(() => null);
     if (!content) throw new Error(`The agent did not create ${specPath}.`);
-    const { errors } = checkSpec(content, outcome.plan);
+    const { errors } = checkSpec(content, outcome.plan, [credentials.username, credentials.password]);
     if (errors.length > 0) throw new Error(`Spec breaks the rules: ${errors.join(' ')}`);
     const verification = await runSpec({ workspace, specPath, env: testEnv, signal: abortController.signal });
     checkCancelled();
@@ -120,9 +125,9 @@ export async function runTicket({ db, run, abortController }) {
     await step('jira.done');
     const fresh = await db.agentRun.findUnique({ where: { id: run.id }, select: { verifiedPass: true } });
     if (!fresh.verifiedPass) throw new Error('Refusing to move to Done without a verified passing test.');
-    await appendToDescription(issue.key, `✅ Automation test created: ${specFile}`);
+    await jira.appendToDescription(issue.key, `✅ Automation test created: ${specFile}`);
     await log('jira.done', 'success', `Appended "✅ Automation test created: ${specFile}"`);
-    const done = await transitionTo(issue.key, STATUS_DONE);
+    const done = await jira.transitionTo(issue.key, STATUS_DONE);
     await log('jira.done', 'success', done.changed ? `Moved to ${STATUS_DONE}` : `Already ${STATUS_DONE}`);
     await audit('jira.transitioned', `${STATUS_IN_PROGRESS} → ${STATUS_DONE}`);
 
@@ -132,7 +137,7 @@ export async function runTicket({ db, run, abortController }) {
   } catch (err) {
     // The ticket stays In Progress. Tell the people watching it why.
     if (!(err instanceof CancelledError) && !abortController.signal.aborted) {
-      await addComment(issue.key, `AgentQA could not finish the automation test: ${err.message}${runUrl ? `\nDetails: ${runUrl}` : ''}`).catch(() => {});
+      await jira.addComment(issue.key, `AgentQA could not finish the automation test: ${err.message}${runUrl ? `\nDetails: ${runUrl}` : ''}`).catch(() => {});
     }
     err.step = currentStep;
     throw err;

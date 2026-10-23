@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import ProjectFormModal from '@/components/ProjectFormModal';
+import { refreshProjects } from '@/lib/dataStores';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
@@ -9,7 +11,7 @@ import { useCurrentUser } from '@/lib/teamStore';
 import { getRelativeTime } from '@/lib/format';
 import { AGENT_STEPS } from '@/lib/agentSteps';
 import { useAgentRuns, useJiraIssues, startAgentRun, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
-import { Bot, Play, Loader2, RefreshCw, ExternalLink, AlertCircle, CheckCircle2, Server, Ticket, ChevronRight } from 'lucide-react';
+import { Bot, Play, Loader2, RefreshCw, ExternalLink, AlertCircle, CheckCircle2, Server, Ticket, ChevronRight, PlugZap, Settings2 } from 'lucide-react';
 import styles from './page.module.css';
 
 const OPERATOR_ROLES = ['Admin', 'QA Lead', 'QA Engineer'];
@@ -23,16 +25,19 @@ export default function QaAgentPage() {
   const [manualKey, setManualKey] = useState('');
   const [starting, setStarting] = useState('');
   const [notice, setNotice] = useState(null);
+  const [editingSection, setEditingSection] = useState(null);
 
   const project = projects.find((p) => p.id === projectId) ?? projects.find((p) => p.jiraProjectKey) ?? projects[0] ?? null;
-  const { runs, worker, jiraConfigured, loaded: runsLoaded, refresh: refreshRuns } = useAgentRuns(project?.id);
-  const { issues, missingKey, loaded: issuesLoaded, error: issuesError, refresh: refreshIssues } = useJiraIssues(project?.id);
+  const { runs, worker, loaded: runsLoaded, refresh: refreshRuns } = useAgentRuns(project?.id);
+  const { issues, loaded: issuesLoaded, error: issuesError, refresh: refreshIssues } = useJiraIssues(project?.jiraConnected ? project.id : null);
+  const jiraConnected = Boolean(project?.jiraConnected);
+  const canManage = me?.role === 'Admin' || me?.role === 'QA Lead';
 
   const canOperate = OPERATOR_ROLES.includes(me?.role);
   const missingSettings = project
-    ? [!project.jiraProjectKey && 'Jira project key', !project.appBaseUrl && 'app link for tests', !project.automationRepoUrl && 'test repository link'].filter(Boolean)
+    ? [!project.appBaseUrl && 'app link for tests', !project.automationRepoUrl && 'test repository link'].filter(Boolean)
     : [];
-  const ready = Boolean(project && jiraConfigured && missingSettings.length === 0);
+  const ready = Boolean(project && jiraConnected && missingSettings.length === 0);
   const activeByKey = new Map(runs.filter(isRunActive).map((r) => [r.issueKey, r]));
 
   const pickUp = async (issueKey, summary = '') => {
@@ -66,8 +71,8 @@ export default function QaAgentPage() {
         <div className={styles.statusBar}>
           <div className={styles.statusItems}>
             <span className={styles.statusItem}>
-              <span className={`status-dot ${jiraConfigured ? styles.dotOn : styles.dotOff}`} />
-              Jira {jiraConfigured ? 'connected' : 'not connected'}
+              <span className={`status-dot ${jiraConnected ? styles.dotOn : styles.dotOff}`} />
+              {jiraConnected ? `Jira: ${project.jiraProjectKey} on ${project.jiraBaseUrl.replace('https://', '')}` : 'Jira not connected'}
             </span>
             <span className={styles.statusItem}>
               <span className={`status-dot ${worker.online ? styles.dotOn : styles.dotOff}`} />
@@ -87,12 +92,25 @@ export default function QaAgentPage() {
           </label>
         </div>
 
-        {!jiraConfigured && (
-          <div className={`${styles.alert} ${styles.alertWarning}`} role="status">
-            <AlertCircle size={16} /> Jira is not connected. Add JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN to the server&apos;s .env and restart it.
+        {project && !jiraConnected && (
+          <div className={`card ${styles.connectCard}`}>
+            <div className={styles.connectIcon}>
+              <PlugZap size={22} />
+            </div>
+            <div className={styles.connectText}>
+              <h3>Connect {project.name} to Jira</h3>
+              <p>Add your Jira Cloud site, an account email, an API token and the project key. The QA Agent then lists open tickets here and can automate them.</p>
+            </div>
+            {canManage ? (
+              <button className="btn btn-primary" onClick={() => setEditingSection('jira')} id="btn-connect-jira">
+                <PlugZap size={15} /> Connect Jira
+              </button>
+            ) : (
+              <span className={styles.meta}>Ask an admin or QA lead to connect Jira.</span>
+            )}
           </div>
         )}
-        {jiraConfigured && !worker.online && (
+        {jiraConnected && !worker.online && (
           <div className={`${styles.alert} ${styles.alertWarning}`} role="status">
             <AlertCircle size={16} />
             <span>
@@ -107,13 +125,17 @@ export default function QaAgentPage() {
             <Link href="/dashboard/projects" className="btn btn-secondary btn-sm">Projects</Link>
           </div>
         )}
-        {project && missingSettings.length > 0 && (
+        {project && jiraConnected && missingSettings.length > 0 && (
           <div className={`${styles.alert} ${styles.alertWarning}`} role="status">
             <AlertCircle size={16} />
             <span>
-              {project.name} needs a {missingSettings.join(', ')} before the agent can run.
+              {project.name} needs a {missingSettings.join(' and ')} before the agent can run.
             </span>
-            <Link href={`/dashboard/projects/${project.id}`} className="btn btn-secondary btn-sm">Edit project</Link>
+            {canManage && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingSection(project.appBaseUrl ? 'repos' : 'testing')}>
+                Edit project
+              </button>
+            )}
           </div>
         )}
         {notice && (
@@ -128,9 +150,16 @@ export default function QaAgentPage() {
               <h3 className={styles.panelTitle}>
                 <Ticket size={16} /> Open Jira tickets
               </h3>
-              <button className="btn btn-ghost btn-sm" onClick={refreshIssues} disabled={!project} title="Reload tickets">
-                <RefreshCw size={14} /> Reload
-              </button>
+              <div className={styles.headerActions}>
+                {canManage && jiraConnected && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingSection('jira')} title="Jira settings">
+                    <Settings2 size={14} /> Jira settings
+                  </button>
+                )}
+                <button className="btn btn-ghost btn-sm" onClick={refreshIssues} disabled={!jiraConnected} title="Reload tickets">
+                  <RefreshCw size={14} /> Reload
+                </button>
+              </div>
             </div>
 
             {canOperate && (
@@ -149,8 +178,8 @@ export default function QaAgentPage() {
               </form>
             )}
 
-            {!project || missingKey ? (
-              <p className={styles.empty}>Add a Jira project key to this project to list its tickets.</p>
+            {!jiraConnected ? (
+              <p className={styles.empty}>Connect Jira to list this project&apos;s open tickets.</p>
             ) : !issuesLoaded ? (
               <p className={styles.empty}>
                 <Loader2 size={14} className="animate-spin" /> Loading tickets…
@@ -236,6 +265,19 @@ export default function QaAgentPage() {
           </section>
         </div>
       </div>
+
+      {editingSection && project && (
+        <ProjectFormModal
+          project={project}
+          initialSection={editingSection}
+          onClose={() => setEditingSection(null)}
+          onSaved={() => {
+            setEditingSection(null);
+            refreshProjects();
+            refreshIssues();
+          }}
+        />
+      )}
     </>
   );
 }

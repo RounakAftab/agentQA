@@ -1,7 +1,7 @@
 // Server-side QA Agent run queries, shared by the /api/qa-agent routes.
 import { db } from '@/lib/db';
 import { WORKER_STALE_MS } from '@/lib/agentSteps';
-import { isJiraConfigured, issueUrl } from '@/lib/jira';
+import { issueUrl } from '@/lib/jira';
 
 const iso = (d) => (d ? d.toISOString() : null);
 
@@ -12,7 +12,7 @@ export function publicRun(run, { withDetail = false } = {}) {
     projectName: run.project?.name ?? null,
     issueKey: run.issueKey,
     issueSummary: run.issueSummary,
-    issueUrl: isJiraConfigured() ? issueUrl(run.issueKey) : null,
+    issueUrl: run.project?.jiraBaseUrl ? issueUrl(run.project.jiraBaseUrl, run.issueKey) : null,
     status: run.status,
     step: run.step,
     verifiedPass: run.verifiedPass,
@@ -39,7 +39,7 @@ export function publicRun(run, { withDetail = false } = {}) {
 }
 
 const include = {
-  project: { select: { name: true } },
+  project: { select: { name: true, jiraBaseUrl: true } },
   startedBy: { select: { id: true, name: true } },
 };
 

@@ -5,7 +5,6 @@
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { isJiraConfigured } from '../src/lib/jira.js';
 import { runTicket, CancelledError } from './runTicket.mjs';
 import { redact } from './processes.mjs';
 
@@ -20,7 +19,7 @@ let current = null; // { id, abortController }
 
 function checkConfig() {
   const missing = [];
-  if (!isJiraConfigured()) missing.push('JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN');
+  if (!process.env.ENCRYPTION_KEY && !process.env.SESSION_SECRET) missing.push('ENCRYPTION_KEY or SESSION_SECRET (the same value as the app, to read saved Jira tokens)');
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) missing.push('ANTHROPIC_API_KEY');
   if (missing.length > 0) {
     console.error(`[worker] Missing settings in .env: ${missing.join('; ')}`);

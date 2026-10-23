@@ -83,20 +83,30 @@ model PasswordToken {
 }
 
 model Project {
-  id                String        @id @default(cuid())
-  name              String
-  description       String
-  repoUrl           String
-  automationRepoUrl String
-  defaultBranch     String        @default("main")
-  language          String
-  framework         String
-  health            ProjectHealth @default(HEALTHY)
-  testCoverage      Float         @default(0.0)
-  jiraProjectKey    String? // e.g. "SCRUM"; the QA Agent reads tickets from this Jira project
-  appBaseUrl        String? // site the generated Playwright tests run against
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id                   String        @id @default(cuid())
+  name                 String
+  description          String
+  repoUrl              String
+  automationRepoUrl    String
+  defaultBranch        String        @default("main")
+  language             String
+  framework            String
+  health               ProjectHealth @default(HEALTHY)
+  testCoverage         Float         @default(0.0)
+  // Jira Cloud connection used by the QA Agent. Secrets are encrypted (src/lib/secrets.js)
+  // and never sent to the browser.
+  jiraBaseUrl          String? // https://your-team.atlassian.net
+  jiraEmail            String?
+  jiraApiTokenEnc      String?
+  jiraProjectKey       String? // e.g. "SCRUM"
+  jiraStatusInProgress String? // status names in this project's workflow; null = "In Progress"
+  jiraStatusDone       String? // null = "Done"
+  // Application the generated Playwright tests run against, and its test account.
+  appBaseUrl           String?
+  e2eUsername          String?
+  e2ePasswordEnc       String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   members      ProjectMember[]
   requirements Requirement[]
