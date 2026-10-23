@@ -1,12 +1,12 @@
 import { db } from '@/lib/db';
 import { json, recordAudit, requireAgentOperator, requireUser } from '@/lib/apiHelpers';
-import { getRun } from '@/lib/agentRuns';
+import { getRun, workerStatus } from '@/lib/agentRuns';
 
 export async function GET(_request, ctx) {
   const { response } = await requireUser();
   if (response) return response;
-  const run = await getRun((await ctx.params).id);
-  return run ? json({ run }) : json({ error: 'Run not found' }, 404);
+  const [run, worker] = await Promise.all([getRun((await ctx.params).id), workerStatus()]);
+  return run ? json({ run, worker }) : json({ error: 'Run not found' }, 404);
 }
 
 // Cancels a run. A queued run stops at once; a running one is stopped by the worker at its

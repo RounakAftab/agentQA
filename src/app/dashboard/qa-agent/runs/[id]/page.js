@@ -4,7 +4,7 @@ import { use, Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { useCurrentUser } from '@/lib/teamStore';
-import { formatDateTime, formatDuration, formatTime } from '@/lib/format';
+import { formatDateTime, formatDuration, formatTime, getRelativeTime } from '@/lib/format';
 import { AGENT_STEPS, stepLabel } from '@/lib/agentSteps';
 import { useAgentRun, cancelAgentRun, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
 import {
@@ -63,7 +63,7 @@ const STEP_ICON = {
 
 function RunDetail({ params }) {
   const { id } = use(params);
-  const { run, loaded, error, refresh } = useAgentRun(id);
+  const { run, worker, loaded, error, refresh } = useAgentRun(id);
   const me = useCurrentUser();
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
@@ -174,9 +174,19 @@ function RunDetail({ params }) {
               : `Test verified and saved${run.prUrl ? ' with a pull request' : ''}. Download it below${run.prUrl ? ' or review the pull request' : ''}.`}
           </div>
         )}
-        {run.status === 'QUEUED' && (
+        {run.status === 'QUEUED' && worker?.online && (
           <div className={`${styles.alert} ${styles.alertInfo}`} role="status">
             <Loader2 size={16} className="animate-spin" /> Waiting for a worker to pick this run up.
+          </div>
+        )}
+        {run.status === 'QUEUED' && worker && !worker.online && (
+          <div className={`${styles.alert} ${styles.alertWarning}`} role="status">
+            <AlertCircle size={16} />
+            <span>
+              No QA Agent worker is online, so this run is waiting in the queue
+              {worker.lastSeenAt ? ` (a worker was last seen ${getRelativeTime(worker.lastSeenAt)})` : ' (no worker has connected yet)'}. It
+              starts automatically once a worker connected to this database is running (<code>npm run agent:worker</code>). You can also cancel it.
+            </span>
           </div>
         )}
 

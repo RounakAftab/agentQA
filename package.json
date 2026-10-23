@@ -13,6 +13,7 @@
     "db:studio": "prisma studio",
     "mail:start": "maildev --smtp 1025 --web 1080 --ip 127.0.0.1",
     "agent:worker": "node --no-warnings --env-file=.env agent/worker.mjs",
+    "agent:worker:prod": "node --no-warnings --env-file=.env.production agent/worker.mjs",
     "agent:browsers": "node node_modules/@playwright/mcp/cli.js install-browser chromium",
     "db:wipe": "node --env-file=.env scripts/wipe.mjs",
     "postinstall": "prisma generate",

@@ -64,7 +64,7 @@ export function useAgentRuns(projectId) {
 
 export function useAgentRun(id) {
   const { data, loaded, error, refresh } = usePolling(id ? `/api/qa-agent/runs/${encodeURIComponent(id)}` : null, runActive);
-  return { run: data?.run ?? null, loaded, error, refresh };
+  return { run: data?.run ?? null, worker: data?.worker ?? null, loaded, error, refresh };
 }
 
 export function useJiraIssues(projectId) {

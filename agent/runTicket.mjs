@@ -114,7 +114,7 @@ export async function runTicket({ db, run, abortController }) {
     };
 
     // 4. The agent plans, inspects the page, writes and iterates on the spec.
-    await step('agent', `Starting agent (${process.env.AGENT_MODEL || 'claude-opus-5-5'})`);
+    await step('agent', `Starting agent (${process.env.AGENT_MODEL || 'claude-haiku-5-5'})`);
     const outcome = await runAgentSession({
       workspace,
       project,

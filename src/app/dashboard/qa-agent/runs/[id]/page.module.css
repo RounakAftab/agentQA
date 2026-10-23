@@ -267,3 +267,11 @@
 .titleAction {
   margin-left: auto;
 }
+
+.alert code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}

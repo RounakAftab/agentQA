@@ -10,7 +10,8 @@ import { runSpec } from './playwright.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PLAYWRIGHT_MCP = path.resolve(here, '..', 'node_modules', '@playwright', 'mcp', 'cli.js');
-const MAX_TEST_RUNS = Number(process.env.AGENT_MAX_TEST_RUNS) || 6;
+// Defaults are the low-cost mode; raise them in .env for harder tickets.
+const MAX_TEST_RUNS = Number(process.env.AGENT_MAX_TEST_RUNS) || 3;
 
 // Secrets the model and its subprocesses never need.
 const HIDDEN_ENV = ['DATABASE_URL', 'DIRECT_URL', 'SESSION_SECRET', 'ENCRYPTION_KEY', 'GITHUB_TOKEN', 'SMTP_PASS', 'E2E_USERNAME', 'E2E_PASSWORD'];
@@ -145,7 +146,7 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
   const session = query({
     prompt: ticketPrompt({ issue, project, specPath }),
     options: {
-      model: process.env.AGENT_MODEL || 'claude-opus-5-5',
+      model: process.env.AGENT_MODEL || 'claude-haiku-5-5',
       systemPrompt,
       cwd: workspace,
       tools: [], // no built-in Read/Write/Bash: only the tools above and the browser
@@ -163,8 +164,8 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
           ? { behavior: 'allow' }
           : { behavior: 'deny', message: 'Only the qa and playwright tools are available.' },
       settingSources: [],
-      maxTurns: Number(process.env.AGENT_MAX_TURNS) || 120,
-      maxBudgetUsd: Number(process.env.AGENT_MAX_BUDGET_USD) || 10,
+      maxTurns: Number(process.env.AGENT_MAX_TURNS) || 40,
+      maxBudgetUsd: Number(process.env.AGENT_MAX_BUDGET_USD) || 0.3,
       abortController,
       env,
     },
@@ -186,7 +187,14 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
     plan,
     costUsd: result?.total_cost_usd ?? null,
     ok: result?.subtype === 'success',
-    summary: result?.subtype === 'success' ? result.result : (result?.errors ?? []).join('; ') || result?.subtype || 'Agent stopped',
+    summary:
+      result?.subtype === 'success'
+        ? result.result
+        : result?.subtype === 'error_max_budget_usd'
+          ? `Stopped at the spending cap of $${Number(process.env.AGENT_MAX_BUDGET_USD) || 0.3} for this run (AGENT_MAX_BUDGET_USD).`
+          : result?.subtype === 'error_max_turns'
+            ? `Stopped after the maximum of ${Number(process.env.AGENT_MAX_TURNS) || 40} agent steps (AGENT_MAX_TURNS).`
+            : (result?.errors ?? []).join('; ') || result?.subtype || 'Agent stopped',
     lastTestPassed: Boolean(lastResult?.passed),
   };
 }
