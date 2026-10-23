@@ -1,7 +1,8 @@
 // QA Agent worker. Claims queued runs from the database one at a time and executes them.
 // Runs next to the app (it can't run on Vercel: it needs a browser and long-lived processes).
 //
-//   npm run agent:worker
+//   npm run agent:worker            keeps running and waits for runs
+//   node agent/worker.mjs --once    works through the queue, then exits (the GitHub Actions runner)
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
@@ -13,6 +14,9 @@ const WORKER_ID = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
 const POLL_MS = 3_000;
 const HEARTBEAT_MS = 10_000;
 const STALE_RUN_MS = 2 * 60_000;
+
+// One-shot mode: started on demand for queued runs, so there is nothing to wait for.
+const ONCE = process.argv.includes('--once');
 
 let stopping = false;
 let current = null; // { id, abortController }
@@ -115,7 +119,7 @@ async function execute(id) {
 async function main() {
   checkConfig();
   await checkDatabaseEncoding();
-  console.log(`[worker] ${WORKER_ID} waiting for runs (Ctrl+C to stop)`);
+  console.log(ONCE ? `[worker] ${WORKER_ID} working through the queue` : `[worker] ${WORKER_ID} waiting for runs (Ctrl+C to stop)`);
   await heartbeat();
   const beat = setInterval(() => heartbeat().catch((e) => console.error('[worker] heartbeat:', e.message)), HEARTBEAT_MS);
 
@@ -124,9 +128,14 @@ async function main() {
       await failStaleRuns();
       const id = await claimRun();
       if (id) await execute(id);
+      else if (ONCE) break;
       else await new Promise((r) => setTimeout(r, POLL_MS));
     } catch (err) {
       console.error('[worker]', err.message);
+      if (ONCE) {
+        process.exitCode = 1;
+        break;
+      }
       await new Promise((r) => setTimeout(r, POLL_MS * 3));
     }
   }
@@ -134,6 +143,7 @@ async function main() {
   clearInterval(beat);
   await db.agentWorker.delete({ where: { id: WORKER_ID } }).catch(() => {});
   await db.$disconnect();
+  if (ONCE) console.log('[worker] Queue is empty, exiting');
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

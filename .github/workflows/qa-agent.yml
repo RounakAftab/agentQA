@@ -1,0 +1,74 @@
+# QA Agent runner on GitHub's free runners. The app starts this workflow when someone runs a
+# requirement or picks up a Jira ticket (see src/lib/agentRunner.js). The job installs the
+# browser, works through every queued run in the database, then exits. It can also be started
+# by hand from the Actions tab to clear the queue.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   DATABASE_URL        the production (Neon) database, the same value as on Vercel
+#   ENCRYPTION_KEY      the same value as on Vercel, to read saved Jira tokens and test passwords
+#                       (or SESSION_SECRET, if Vercel has no ENCRYPTION_KEY)
+#   ANTHROPIC_API_KEY   for the Claude agent
+# Optional secret:
+#   AGENT_GITHUB_TOKEN  push spec branches and open draft PRs in the projects' test repositories
+# Optional repository variables: PRODUCTION_URL (links in Jira comments), AGENT_MODEL,
+#   AGENT_MAX_BUDGET_USD, AGENT_MAX_TURNS, AGENT_MAX_TEST_RUNS
+#
+# This repository is public, so job logs are public. The worker logs only ticket keys, its own
+# progress and redacted errors; the agent's details are stored in the database, not the log.
+
+name: QA Agent runner
+run-name: QA Agent run ${{ inputs.run_id || '(queue)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Run that started this job (optional; every queued run is processed)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Process queued QA Agent runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DATABASE_URL }}
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
+      APP_URL: ${{ vars.PRODUCTION_URL }}
+      AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-haiku-5-5' }}
+      AGENT_MAX_BUDGET_USD: ${{ vars.AGENT_MAX_BUDGET_USD || '0.30' }}
+      AGENT_MAX_TURNS: ${{ vars.AGENT_MAX_TURNS || '40' }}
+      AGENT_MAX_TEST_RUNS: ${{ vars.AGENT_MAX_TEST_RUNS || '3' }}
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium and its system libraries
+        run: npm run agent:browsers -- --with-deps
+
+      - name: Run the QA Agent
+        run: npm run agent:runner

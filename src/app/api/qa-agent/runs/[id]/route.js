@@ -1,12 +1,31 @@
 import { db } from '@/lib/db';
 import { json, recordAudit, requireAgentOperator, requireUser } from '@/lib/apiHelpers';
 import { getRun, workerStatus } from '@/lib/agentRuns';
+import { cloudRunnerEnabled, startRunnerFor } from '@/lib/agentRunner';
 
 export async function GET(_request, ctx) {
   const { response } = await requireUser();
   if (response) return response;
   const [run, worker] = await Promise.all([getRun((await ctx.params).id), workerStatus()]);
   return run ? json({ run, worker }) : json({ error: 'Run not found' }, 404);
+}
+
+// Starts another GitHub Actions runner for a run that is still queued, e.g. after the first
+// one failed to start or was cancelled in GitHub.
+export async function POST(_request, ctx) {
+  const { user, response } = await requireAgentOperator();
+  if (response) return response;
+
+  const { id } = await ctx.params;
+  const run = await db.agentRun.findUnique({ where: { id } });
+  if (!run) return json({ error: 'Run not found' }, 404);
+  if (run.status !== 'QUEUED') return json({ error: 'Only a queued run can be started' }, 409);
+  if (!cloudRunnerEnabled()) return json({ error: 'GitHub Actions runners are not set up (AGENT_DISPATCH_TOKEN, AGENT_DISPATCH_REPO).' }, 400);
+
+  const result = await startRunnerFor(id);
+  if (!result.started) return json({ error: result.error }, 502);
+  await recordAudit({ userId: user.id, projectId: run.projectId, action: 'agent.run.runner_started', target: run.issueKey, details: 'Started a GitHub Actions runner' });
+  return json({ run: await getRun(id) });
 }
 
 // Cancels a run. A queued run stops at once; a running one is stopped by the worker at its

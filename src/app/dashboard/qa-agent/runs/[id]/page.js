@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import { useCurrentUser } from '@/lib/teamStore';
 import { formatDateTime, formatDuration, formatTime, getRelativeTime } from '@/lib/format';
 import { AGENT_STEPS, stepLabel } from '@/lib/agentSteps';
-import { useAgentRun, cancelAgentRun, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
+import { useAgentRun, cancelAgentRun, startRunner, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -22,13 +22,16 @@ import {
   ScrollText,
   Download,
   MinusCircle,
+  Play,
 } from 'lucide-react';
 import styles from './page.module.css';
 
 const OPERATOR_ROLES = ['Admin', 'QA Lead', 'QA Engineer'];
 
 // Short names for the activity log, e.g. "jira.read" -> "Read requirement" for a manual run.
-const LOG_NAMES = { workspace: 'Test project', agent: 'Agent', verify: 'Verify', publish: 'Publish', done: 'Finished' };
+const LOG_NAMES = { runner: 'Runner', workspace: 'Test project', agent: 'Agent', verify: 'Verify', publish: 'Publish', done: 'Finished' };
+// A GitHub Actions runner usually picks a run up within a minute or two.
+const RUNNER_SLOW_MS = 4 * 60_000;
 function logStepLabel(id, source) {
   if (LOG_NAMES[id]) return LOG_NAMES[id];
   const step = AGENT_STEPS.find((s) => s.id === id);
@@ -67,6 +70,13 @@ function RunDetail({ params }) {
   const me = useCurrentUser();
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
+  const [starting, setStarting] = useState(false);
+  // Ticks so a queued run can tell when its runner is taking unusually long.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
   const logEndRef = useRef(null);
   const eventCount = run?.events.length ?? 0;
 
@@ -98,6 +108,10 @@ function RunDetail({ params }) {
   const steps = stepsFor(run);
   const states = stepStates(run, steps);
   const isJira = run.source !== 'manual';
+  const runnerEvents = run.events.filter((e) => e.step === 'runner');
+  const runnerFailed = runnerEvents.at(-1)?.level === 'error';
+  const lastRunnerStart = runnerEvents.findLast((e) => e.level !== 'error')?.at ?? run.queuedAt;
+  const runnerSlow = runnerFailed || now - new Date(lastRunnerStart) > RUNNER_SLOW_MS;
 
   const downloadSpec = () => {
     const url = URL.createObjectURL(new Blob([run.specContent], { type: 'text/plain' }));
@@ -109,6 +123,15 @@ function RunDetail({ params }) {
   const canCancel = active && !run.cancelRequested && OPERATOR_ROLES.includes(me?.role);
   const duration =
     run.startedAt && Math.round(((run.finishedAt ? new Date(run.finishedAt) : new Date()) - new Date(run.startedAt)) / 1000);
+
+  const restartRunner = async () => {
+    setStarting(true);
+    setCancelError('');
+    const result = await startRunner(run.id);
+    setStarting(false);
+    if (!result.ok) setCancelError(result.data.error ?? 'Could not start a runner');
+    refresh();
+  };
 
   const cancel = async () => {
     setCancelling(true);
@@ -179,7 +202,24 @@ function RunDetail({ params }) {
             <Loader2 size={16} className="animate-spin" /> Waiting for a worker to pick this run up.
           </div>
         )}
-        {run.status === 'QUEUED' && worker && !worker.online && (
+        {run.status === 'QUEUED' && worker && !worker.online && worker.onDemand && (
+          <div className={`${styles.alert} ${runnerSlow ? styles.alertWarning : styles.alertInfo}`} role="status">
+            {runnerSlow ? <AlertCircle size={16} /> : <Loader2 size={16} className="animate-spin" />}
+            <span>
+              {runnerFailed
+                ? 'The GitHub Actions runner could not be started (see Activity below).'
+                : runnerSlow
+                  ? 'No runner has picked this run up yet. Check the "QA Agent runner" workflow in the repository’s Actions tab, or start another runner.'
+                  : 'Starting a runner on GitHub Actions. This usually takes a minute or two.'}
+            </span>
+            {(runnerSlow || runnerFailed) && OPERATOR_ROLES.includes(me?.role) && (
+              <button className="btn btn-secondary btn-sm" onClick={restartRunner} disabled={starting} id="btn-start-runner">
+                {starting ? <Loader2 size={14} className="animate-spin" /> : <Play size={13} />} Start runner again
+              </button>
+            )}
+          </div>
+        )}
+        {run.status === 'QUEUED' && worker && !worker.online && !worker.onDemand && (
           <div className={`${styles.alert} ${styles.alertWarning}`} role="status">
             <AlertCircle size={16} />
             <span>

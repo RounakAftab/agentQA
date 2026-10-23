@@ -3,6 +3,7 @@ import { json, readJson, recordAudit, requireAgentOperator, requireUser } from '
 import { listRuns, getRun, workerStatus } from '@/lib/agentRuns';
 import { ACTIVE_STATUSES, ISSUE_KEY_PATTERN } from '@/lib/agentSteps';
 import { isProjectJiraConnected } from '@/lib/jira';
+import { startRunnerFor } from '@/lib/agentRunner';
 
 export async function GET(request) {
   const { response } = await requireUser();
@@ -13,7 +14,8 @@ export async function GET(request) {
 }
 
 // Queues a run: { projectId, issueKey } for a Jira ticket ("pick up SCRUM-X"), or
-// { projectId, requirementId } for a requirement written in AgentQA. The worker does the rest.
+// { projectId, requirementId } for a requirement written in AgentQA. A worker does the rest:
+// a GitHub Actions runner started here when that is set up, or one kept running by hand.
 export async function POST(request) {
   const { user, response } = await requireAgentOperator();
   if (response) return response;
@@ -47,5 +49,6 @@ export async function POST(request) {
   const issueKey = data.issueKey;
 
   await recordAudit({ userId: user.id, projectId: project.id, action: 'agent.run.queued', target: issueKey, details: 'Queued QA Agent run' });
+  await startRunnerFor(run.id);
   return json({ run: await getRun(run.id) }, 201);
 }

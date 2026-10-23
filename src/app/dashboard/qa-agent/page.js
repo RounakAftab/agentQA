@@ -160,7 +160,12 @@ export default function QaAgentPage() {
               detail={project?.automationRepoUrl ? 'Pull request' : 'Saved in AgentQA'}
               neutral
             />
-            <Capability on={worker.online} icon={Server} label="Worker" detail={worker.online ? 'Online' : 'Offline'} />
+            <Capability
+              on={worker.online || worker.onDemand}
+              icon={Server}
+              label="Worker"
+              detail={worker.online ? 'Online' : worker.onDemand ? 'GitHub Actions' : 'Offline'}
+            />
           </div>
         </div>
 
@@ -181,7 +186,7 @@ export default function QaAgentPage() {
             )}
           </div>
         )}
-        {project && canAutomate && !worker.online && (
+        {project && canAutomate && !worker.online && !worker.onDemand && (
           <div className={`${styles.alert} ${styles.alertWarning}`} role="status">
             <AlertCircle size={16} />
             <span>

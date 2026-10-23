@@ -2,6 +2,7 @@
 import { db } from '@/lib/db';
 import { WORKER_STALE_MS } from '@/lib/agentSteps';
 import { issueUrl } from '@/lib/jira';
+import { cloudRunnerEnabled } from '@/lib/agentRunner';
 
 const iso = (d) => (d ? d.toISOString() : null);
 
@@ -69,5 +70,7 @@ export async function workerStatus() {
   return {
     online: Boolean(latest && Date.now() - latest.lastSeenAt.getTime() < WORKER_STALE_MS),
     lastSeenAt: iso(latest?.lastSeenAt),
+    // Runs start a GitHub Actions runner themselves, so no worker has to be online.
+    onDemand: cloudRunnerEnabled(),
   };
 }
