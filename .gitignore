@@ -50,3 +50,5 @@ next-env.d.ts
 
 # production secrets for one-off commands (never commit)
 .env.production
+.vercel
+.env*
