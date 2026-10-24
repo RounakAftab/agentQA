@@ -140,6 +140,8 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
 
   const env = { ...process.env };
   for (const name of HIDDEN_ENV) delete env[name];
+  // An empty key from .env would override the CLI login.
+  if (!env.ANTHROPIC_API_KEY) delete env.ANTHROPIC_API_KEY;
 
   const systemPrompt = await fs.readFile(path.join(here, 'systemPrompt.md'), 'utf8');
 

@@ -87,6 +87,8 @@ acceptance criterion. A spec that breaks a rule is rejected.
    - **Repositories**: set the test repository. It must already have `@playwright/test` and a
      `playwright.config`.
 2. Fill in the QA Agent section of `.env` for the worker (`ANTHROPIC_API_KEY`, `GITHUB_TOKEN`).
+   On your machine `ANTHROPIC_API_KEY` is optional: left empty, the worker uses your Claude CLI
+   login (a Pro/Max subscription). Run `claude` once to sign in.
 3. Run the worker, either way:
    - **On demand (recommended in production):** every run starts a GitHub Actions job that
      processes the queue and exits ([.github/workflows/qa-agent.yml](.github/workflows/qa-agent.yml)).
@@ -94,6 +96,9 @@ acceptance criterion. A spec that breaks a rule is rejected.
      `AGENT_DISPATCH_REPO` (and optionally `AGENT_DISPATCH_REF`) on Vercel.
    - **On your machine:** `npm run agent:browsers` once, then keep `npm run agent:worker`
      running in a fourth terminal.
+   - **Production queue from your machine:** leave `AGENT_DISPATCH_TOKEN` and `AGENT_DISPATCH_REPO`
+     unset on Vercel and run `npm run agent:worker:prod` (reads `.env.production`). Runs started
+     on the live dashboard wait in the queue until this worker picks them up.
 
 The worker needs a UTF-8 database. Clusters created by `npm run db:start` before the QA Agent was
 added are WIN1252 on Windows. The worker refuses to start on one and explains how to recreate it.

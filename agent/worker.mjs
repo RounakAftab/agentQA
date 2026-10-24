@@ -24,11 +24,14 @@ let current = null; // { id, abortController }
 function checkConfig() {
   const missing = [];
   if (!process.env.ENCRYPTION_KEY && !process.env.SESSION_SECRET) missing.push('ENCRYPTION_KEY or SESSION_SECRET (the same value as the app, to read saved Jira tokens)');
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) missing.push('ANTHROPIC_API_KEY');
+  // Without a key the Agent SDK falls back to the local `claude` CLI login, which a CI runner doesn't have.
+  const hasKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+  if (!hasKey && ONCE) missing.push('ANTHROPIC_API_KEY');
   if (missing.length > 0) {
     console.error(`[worker] Missing settings in .env: ${missing.join('; ')}`);
     process.exit(1);
   }
+  if (!hasKey) console.warn('[worker] ANTHROPIC_API_KEY is not set: using your Claude CLI login (run "claude" once to sign in if needed).');
   if (!process.env.GITHUB_TOKEN) console.warn('[worker] GITHUB_TOKEN is not set: specs will be committed locally but not pushed.');
 }
 
