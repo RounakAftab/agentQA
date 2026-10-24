@@ -253,9 +253,14 @@ model CIRun {
   failed        Int       @default(0)
   skipped       Int       @default(0)
   coverage      Float     @default(0.0)
+  runUrl        String? // the GitHub Actions run that produced this report
+  externalId    String? // "<run id>-<attempt>"; a re-sent report updates the same row
 
   project  Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   failures CIFailure[]
+
+  @@unique([projectId, externalId])
+  @@index([projectId, startedAt])
 }
 
 model CIFailure {
@@ -265,7 +270,7 @@ model CIFailure {
   className  String
   error      String @db.Text
   duration   Float
-  aiAnalysis String @db.Text
+  aiAnalysis String? @db.Text // likely cause, from src/lib/playwrightReport.js
 
   ciRun CIRun @relation(fields: [ciRunId], references: [id], onDelete: Cascade)
 }

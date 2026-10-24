@@ -1,0 +1,91 @@
+# Copy this file into your TEST repository as .github/workflows/agentqa-playwright.yml.
+# It runs the Playwright tests and sends the report to AgentQA's CI Results page.
+#
+# In the test repository, Settings > Secrets and variables > Actions:
+#   Secrets:   AGENTQA_CI_TOKEN  the same value as CI_INGEST_TOKEN on the AgentQA server
+#              E2E_USERNAME, E2E_PASSWORD  the test account the specs log in with
+#   Variables: AGENTQA_URL       e.g. https://agent-qa-indol.vercel.app (no trailing slash)
+#              BASE_URL          the application under test
+#              AGENTQA_PROJECT_ID  optional; only needed when two AgentQA projects share this repository
+
+name: AgentQA Playwright tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *' # nightly regression run (UTC)
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ vars.BASE_URL }}
+      PLAYWRIGHT_BASE_URL: ${{ vars.BASE_URL }}
+      E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        id: tests
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-report.json
+        run: npx playwright test --reporter=json,line
+
+      - name: Report to AgentQA
+        if: always()
+        env:
+          AGENTQA_URL: ${{ vars.AGENTQA_URL }}
+          AGENTQA_CI_TOKEN: ${{ secrets.AGENTQA_CI_TOKEN }}
+          AGENTQA_PROJECT_ID: ${{ vars.AGENTQA_PROJECT_ID }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$AGENTQA_URL" ] || [ -z "$AGENTQA_CI_TOKEN" ]; then
+            echo "::warning::AGENTQA_URL or AGENTQA_CI_TOKEN is not set; skipping the report."
+            exit 0
+          fi
+          REPORT=playwright-report.json
+          [ -s "$REPORT" ] || echo 'null' > "$REPORT"
+          jq -n \
+            --slurpfile report "$REPORT" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg projectId "$AGENTQA_PROJECT_ID" \
+            --arg branch "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" \
+            --arg commit "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --arg commitMessage "$(git log -1 --pretty=%s)" \
+            --arg event "$GITHUB_EVENT_NAME" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg runUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg status "$JOB_STATUS" \
+            '{repository: $repository, projectId: (if $projectId == "" then null else $projectId end), branch: $branch, commit: $commit,
+              commitMessage: $commitMessage, event: $event, runId: $runId, runAttempt: $runAttempt,
+              runUrl: $runUrl, status: $status, report: $report[0]}' > agentqa-payload.json
+          curl -fsS -X POST "$AGENTQA_URL/api/ci/runs" \
+            -H "Authorization: Bearer $AGENTQA_CI_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @agentqa-payload.json
+
+      - name: Fail the job when tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1

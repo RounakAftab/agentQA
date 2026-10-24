@@ -10,10 +10,13 @@ function githubRepo(repoUrl) {
   return m ? { owner: m[1], repo: m[2] } : null;
 }
 
-function authedUrl(repoUrl) {
+// Git arguments that authenticate one command. The token travels in a header for that command
+// only, so it is never written to .git/config in the workspace.
+export function gitAuthArgs(repoUrl) {
   const token = process.env.GITHUB_TOKEN;
-  if (!token || !githubRepo(repoUrl)) return repoUrl;
-  return repoUrl.replace('https://', `https://x-access-token:${token}@`);
+  if (!token || !githubRepo(repoUrl)) return [];
+  const basic = Buffer.from(`x-access-token:${token}`).toString('base64');
+  return ['-c', `http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic}`];
 }
 
 const exists = (p) => fs.access(p).then(() => true, () => false);
@@ -68,18 +71,20 @@ export async function prepareWorkspace(project, branch, log) {
   const dir = path.join(ROOT, project.id);
   const base = project.defaultBranch || 'main';
   const git = (...args) => runOrThrow('git', args, { cwd: dir, timeoutMs: 5 * 60_000 });
+  const auth = gitAuthArgs(project.automationRepoUrl);
 
   if (await exists(path.join(dir, '.git'))) {
     await log(`Refreshing ${redact(project.automationRepoUrl)}`);
-    await git('remote', 'set-url', 'origin', authedUrl(project.automationRepoUrl));
-    await git('fetch', '--depth', '50', 'origin', base);
+    // Also replaces a token-bearing URL saved by older workers.
+    await git('remote', 'set-url', 'origin', project.automationRepoUrl);
+    await git(...auth, 'fetch', '--depth', '50', 'origin', base);
     await git('checkout', '-B', branch, `origin/${base}`);
     await git('reset', '--hard', `origin/${base}`);
     await git('clean', '-fd');
   } else {
     await log(`Cloning ${redact(project.automationRepoUrl)}`);
     await fs.mkdir(ROOT, { recursive: true });
-    await runOrThrow('git', ['clone', '--depth', '50', '--branch', base, authedUrl(project.automationRepoUrl), dir], { timeoutMs: 10 * 60_000 });
+    await runOrThrow('git', [...auth, 'clone', '--depth', '50', '--branch', base, project.automationRepoUrl, dir], { timeoutMs: 10 * 60_000 });
     await git('checkout', '-B', branch);
     // Keep worker scratch files out of commits.
     await fs.appendFile(path.join(dir, '.git', 'info', 'exclude'), '\n.agentqa/\n');
@@ -109,7 +114,7 @@ export async function publishSpec({ dir, project, branch, specPath, issueKey, su
   const gh = githubRepo(project.automationRepoUrl);
   if (!process.env.GITHUB_TOKEN || !gh) return { pushed: false, prUrl: null };
 
-  await git('push', '--force-with-lease', '-u', 'origin', branch);
+  await git(...gitAuthArgs(project.automationRepoUrl), 'push', '--force-with-lease', '-u', 'origin', branch);
 
   const headers = {
     Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,

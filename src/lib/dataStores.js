@@ -52,6 +52,7 @@ function createListStore(url, key) {
 const projectsStore = createListStore('/api/projects', 'projects');
 const auditStore = createListStore('/api/audit', 'events');
 const approvalsStore = createListStore('/api/approvals', 'approvals');
+const ciRunsStore = createListStore('/api/ci/runs', 'runs');
 
 export function useProjects() {
   const { items, loaded } = projectsStore.useStore();
@@ -72,6 +73,13 @@ export function useApprovals() {
 export const refreshProjects = projectsStore.refresh;
 export const refreshAudit = auditStore.refresh;
 export const refreshApprovals = approvalsStore.refresh;
+export const refreshCiRuns = ciRunsStore.refresh;
+
+// Test reports sent by the test repositories' GitHub Actions workflows.
+export function useCiRuns() {
+  const { items, loaded } = ciRunsStore.useStore();
+  return { runs: items, loaded };
+}
 
 async function call(method, url, body) {
   try {

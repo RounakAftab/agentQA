@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import { getStatusLabel, getStatusColor, getRelativeTime, formatDuration } from '@/lib/format';
-import { useProjects } from '@/lib/dataStores';
+import { useProjects, useCiRuns, refreshCiRuns } from '@/lib/dataStores';
 import {
   Activity,
   CheckCircle2,
@@ -25,16 +25,29 @@ import {
 } from 'lucide-react';
 import styles from './page.module.css';
 
+const STATUS_BADGE = { passed: 'success', failed: 'danger', cancelled: 'neutral', running: 'info' };
+
 export default function CIResultsPage() {
   const { projects } = useProjects();
-  // No CI provider is connected yet, so there are no runs to list.
-  const [runsList, setRunsList] = useState([]);
-  const [selectedRun, setSelectedRun] = useState(null);
+  const { runs: runsList, loaded } = useCiRuns();
+  const [selectedId, setSelectedId] = useState(null);
   const [projectFilter, setProjectFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isReRunning, setIsReRunning] = useState(false);
-  const [reRunNotice, setReRunNotice] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Reports arrive from GitHub while the page is open, so check for new ones now and then.
+  useEffect(() => {
+    refreshCiRuns();
+    const timer = setInterval(refreshCiRuns, 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshCiRuns();
+    setRefreshing(false);
+  };
 
   const filteredRuns = runsList.filter((r) => {
     if (projectFilter !== 'all' && r.projectId !== projectFilter) return false;
@@ -49,59 +62,24 @@ export default function CIResultsPage() {
     }
     return true;
   });
-
-  const handleReRun = (runId) => {
-    setIsReRunning(true);
-    setReRunNotice('Re-triggering GitHub Actions workflow with AI diagnostics enabled...');
-
-    setTimeout(() => {
-      setRunsList((prev) =>
-        prev.map((r) => {
-          if (r.id === runId) {
-            const updated = {
-              ...r,
-              status: 'passed',
-              passed: r.totalTests - (r.skipped || 0),
-              failed: 0,
-              failures: [],
-              startedAt: new Date().toISOString(),
-              duration: r.duration + 5,
-            };
-            if (selectedRun?.id === runId) {
-              setSelectedRun(updated);
-            }
-            return updated;
-          }
-          return r;
-        })
-      );
-      setIsReRunning(false);
-      setReRunNotice('✓ Workflow completed: All test suites passed! AI verified zero regressions.');
-      setTimeout(() => setReRunNotice(null), 5000);
-    }, 2500);
-  };
+  const selectedRun = filteredRuns.find((r) => r.id === selectedId) ?? null;
 
   const totalRuns = runsList.length;
   const passedRuns = runsList.filter((r) => r.status === 'passed').length;
   const failedRuns = runsList.filter((r) => r.status === 'failed').length;
   const totalFailures = runsList.reduce((acc, r) => acc + (r.failures?.length || 0), 0);
+  const reportingProjects = new Set(runsList.map((r) => r.projectId)).size;
+  const timedRuns = runsList.filter((r) => r.duration != null);
+  const pct = (n, total) => (total > 0 ? (n / total) * 100 : 0);
 
   return (
     <>
       <Header
-        title="CI-Validated Results & AI Failure Analysis"
-        subtitle="GitHub Actions test execution reports with AI-powered root cause diagnosis"
+        title="CI Results"
+        subtitle="Playwright test reports sent by your test repositories' GitHub Actions workflows"
       />
 
       <div className={styles.content}>
-        {/* Notification Banner */}
-        {reRunNotice && (
-          <div className={`${styles.notice} ${isReRunning ? styles.noticeInfo : styles.noticeSuccess}`}>
-            {isReRunning ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-            <span>{reRunNotice}</span>
-          </div>
-        )}
-
         {/* Top Summary Metrics */}
         <div className={styles.statsGrid}>
           <div className={styles.statCard}>
@@ -111,7 +89,7 @@ export default function CIResultsPage() {
             <div>
               <div className={styles.statLabel}>Total CI Runs</div>
               <div className={styles.statValue}>{totalRuns}</div>
-              <div className={styles.statSub}>Across 4 active repositories</div>
+              <div className={styles.statSub}>From {reportingProjects} {reportingProjects === 1 ? 'project' : 'projects'}</div>
             </div>
           </div>
 
@@ -131,9 +109,9 @@ export default function CIResultsPage() {
               <Sparkles size={20} className={styles.iconPurple} />
             </div>
             <div>
-              <div className={styles.statLabel}>AI Failure Diagnoses</div>
+              <div className={styles.statLabel}>Failing Tests</div>
               <div className={styles.statValue}>{totalFailures}</div>
-              <div className={styles.statSub}>Auto-triaged with suggested fixes</div>
+              <div className={styles.statSub}>Across all reported runs</div>
             </div>
           </div>
 
@@ -144,11 +122,11 @@ export default function CIResultsPage() {
             <div>
               <div className={styles.statLabel}>Avg Run Duration</div>
               <div className={styles.statValue}>
-                {totalRuns === 0
+                {timedRuns.length === 0
                   ? '—'
-                  : formatDuration(Math.round(runsList.reduce((sum, r) => sum + (r.duration || 0), 0) / totalRuns))}
+                  : formatDuration(Math.round(timedRuns.reduce((sum, r) => sum + r.duration, 0) / timedRuns.length))}
               </div>
-              <div className={styles.statSub}>Parallel Playwright & JUnit runners</div>
+              <div className={styles.statSub}>Per workflow run</div>
             </div>
           </div>
         </div>
@@ -189,7 +167,11 @@ export default function CIResultsPage() {
               <option value="all">All Statuses</option>
               <option value="passed">Passed</option>
               <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
             </select>
+            <button className="btn btn-secondary" onClick={handleRefresh} disabled={refreshing} id="btn-refresh-ci">
+              <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} /> Refresh
+            </button>
           </div>
         </div>
 
@@ -204,10 +186,15 @@ export default function CIResultsPage() {
             </div>
 
             <div className={styles.runsList}>
-              {runsList.length === 0 && (
+              {!loaded ? (
+                <p className={styles.emptyRuns}>Loading CI runs…</p>
+              ) : runsList.length === 0 ? (
                 <p className={styles.emptyRuns} id="ci-empty">
-                  No CI runs yet. Results appear here once a GitHub Actions workflow reports to this dashboard.
+                  No CI runs yet. Add the AgentQA workflow (ci-templates/agentqa-playwright.yml) to your test repository;
+                  each run reports here when it finishes.
                 </p>
+              ) : (
+                filteredRuns.length === 0 && <p className={styles.emptyRuns}>No CI runs match the filters.</p>
               )}
               {filteredRuns.map((run) => {
                 const project = projects.find((p) => p.id === run.projectId);
@@ -218,11 +205,11 @@ export default function CIResultsPage() {
                   <div
                     key={run.id}
                     className={`${styles.runCard} ${isSelected ? styles.selectedRunCard : ''}`}
-                    onClick={() => setSelectedRun(run)}
+                    onClick={() => setSelectedId(run.id)}
                     id={`ci-run-${run.id}`}
                   >
                     <div className={styles.runCardTop}>
-                      <span className={`badge badge-${isFailed ? 'danger' : 'success'}`}>
+                      <span className={`badge badge-${STATUS_BADGE[run.status] ?? 'neutral'}`}>
                         {isFailed ? <XCircle size={12} /> : <CheckCircle2 size={12} />}
                         {run.status.toUpperCase()}
                       </span>
@@ -250,7 +237,6 @@ export default function CIResultsPage() {
                         {run.failed > 0 && <span className={styles.textRed}>{run.failed} failed</span>}
                         {run.skipped > 0 && <span className={styles.textMuted}>{run.skipped} skipped</span>}
                       </div>
-                      <span className={styles.covBadge}>{run.coverage}% cov</span>
                     </div>
                   </div>
                 );
@@ -266,12 +252,11 @@ export default function CIResultsPage() {
                 <div className={styles.detailTop}>
                   <div>
                     <div className={styles.detailBadgeGroup}>
-                      <span className={`badge badge-${selectedRun.status === 'failed' ? 'danger' : 'success'}`}>
+                      <span className={`badge badge-${STATUS_BADGE[selectedRun.status] ?? 'neutral'}`}>
                         {selectedRun.status === 'failed' ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
                         {selectedRun.status.toUpperCase()}
                       </span>
                       <span className="badge badge-neutral">Trigger: {selectedRun.triggeredBy}</span>
-                      <span className="badge badge-info">Coverage: {selectedRun.coverage}%</span>
                     </div>
                     <h2 className={styles.detailCommitTitle}>{selectedRun.commitMessage}</h2>
                     <div className={styles.detailSubInfo}>
@@ -283,15 +268,11 @@ export default function CIResultsPage() {
                     </div>
                   </div>
 
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => handleReRun(selectedRun.id)}
-                    disabled={isReRunning}
-                    id="btn-rerun-ci"
-                  >
-                    <RefreshCw size={15} className={isReRunning ? 'animate-spin' : ''} />
-                    {isReRunning ? 'Executing...' : 'Re-run Workflow'}
-                  </button>
+                  {selectedRun.runUrl && (
+                    <a className="btn btn-secondary" href={selectedRun.runUrl} target="_blank" rel="noreferrer" id="btn-open-ci-run">
+                      <ExternalLink size={15} /> Open in GitHub
+                    </a>
+                  )}
                 </div>
 
                 {/* Test Suite Breakdown Bar */}
@@ -299,24 +280,24 @@ export default function CIResultsPage() {
                   <div className={styles.breakdownBar}>
                     <div
                       className={styles.barPassed}
-                      style={{ width: `${(selectedRun.passed / selectedRun.totalTests) * 100}%` }}
+                      style={{ width: `${pct(selectedRun.passed, selectedRun.totalTests)}%` }}
                       title={`${selectedRun.passed} passed`}
                     />
                     <div
                       className={styles.barFailed}
-                      style={{ width: `${(selectedRun.failed / selectedRun.totalTests) * 100}%` }}
+                      style={{ width: `${pct(selectedRun.failed, selectedRun.totalTests)}%` }}
                       title={`${selectedRun.failed} failed`}
                     />
                     <div
                       className={styles.barSkipped}
-                      style={{ width: `${(selectedRun.skipped / selectedRun.totalTests) * 100}%` }}
+                      style={{ width: `${pct(selectedRun.skipped, selectedRun.totalTests)}%` }}
                       title={`${selectedRun.skipped} skipped`}
                     />
                   </div>
 
                   <div className={styles.breakdownStats}>
                     <span className={styles.statPassed}>
-                      <CheckCircle2 size={14} /> {selectedRun.passed} Passed ({Math.round((selectedRun.passed / selectedRun.totalTests) * 100)}%)
+                      <CheckCircle2 size={14} /> {selectedRun.passed} Passed ({Math.round(pct(selectedRun.passed, selectedRun.totalTests))}%)
                     </span>
                     <span className={styles.statFailed}>
                       <XCircle size={14} /> {selectedRun.failed} Failed
@@ -333,21 +314,22 @@ export default function CIResultsPage() {
                     <div className={styles.failureSectionHeader}>
                       <div className={styles.failureHeaderTitle}>
                         <Sparkles size={18} className={styles.sparkleIcon} />
-                        <h3>AI-Assisted Failure Analysis & Root Cause Triage</h3>
+                        <h3>Failures</h3>
                       </div>
                       <span className={styles.aiTriageBadge}>
-                        {selectedRun.failures.length} Root Causes Identified
+                        {selectedRun.failures.length} {selectedRun.failures.length === 1 ? 'failure' : 'failures'}
                       </span>
                     </div>
 
                     <div className={styles.failureList}>
-                      {selectedRun.failures.map((f, idx) => (
-                        <div key={idx} className={styles.failureItem}>
+                      {selectedRun.failures.map((f) => (
+                        <div key={f.id} className={styles.failureItem}>
                           <div className={styles.failureItemHeader}>
                             <div className={styles.failureItemTitleGroup}>
                               <AlertTriangle size={16} className={styles.iconAlert} />
                               <span className={styles.failureTestName}>{f.testName}</span>
                             </div>
+                            {f.className && <span className={styles.failureDuration}>{f.className}</span>}
                             <span className={styles.failureDuration}>{f.duration}s</span>
                           </div>
 
@@ -355,13 +337,15 @@ export default function CIResultsPage() {
                             <code>{f.error}</code>
                           </div>
 
-                          <div className={styles.aiInsightCard}>
-                            <div className={styles.aiInsightHeader}>
-                              <Sparkles size={14} />
-                              <span>AI Diagnostic & Suggested Fix:</span>
+                          {f.likelyCause && (
+                            <div className={styles.aiInsightCard}>
+                              <div className={styles.aiInsightHeader}>
+                                <Sparkles size={14} />
+                                <span>Likely cause (from the error message):</span>
+                              </div>
+                              <p className={styles.aiInsightText}>{f.likelyCause}</p>
                             </div>
-                            <p className={styles.aiInsightText}>{f.aiAnalysis}</p>
-                          </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -369,9 +353,13 @@ export default function CIResultsPage() {
                 ) : (
                   <div className={styles.allGreenCard}>
                     <CheckCircle2 size={40} className={styles.allGreenIcon} />
-                    <h3 className={styles.allGreenTitle}>All Test Suites Passed</h3>
+                    <h3 className={styles.allGreenTitle}>
+                      {selectedRun.status === 'cancelled' ? 'Run cancelled' : 'All tests passed'}
+                    </h3>
                     <p className={styles.allGreenDesc}>
-                      No test failures detected. All assertions and integration contracts satisfied GitHub Actions CI gatekeeper criteria.
+                      {selectedRun.status === 'cancelled'
+                        ? 'The workflow was cancelled before it finished.'
+                        : `${selectedRun.passed} of ${selectedRun.totalTests} tests passed${selectedRun.skipped ? `, ${selectedRun.skipped} skipped` : ''}.`}
                     </p>
                   </div>
                 )}
@@ -379,7 +367,7 @@ export default function CIResultsPage() {
             ) : (
               <div className={styles.noRunSelected}>
                 <Activity size={32} />
-                <p>Select a CI run from the list to view test results and AI analysis</p>
+                <p>Select a CI run from the list to see its test results and failures</p>
               </div>
             )}
           </div>
