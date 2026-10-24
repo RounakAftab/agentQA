@@ -255,3 +255,31 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.statHint {
+  font-size: 11px;
+  color: var(--slate-400);
+}
+
+.sectionWide {
+  grid-column: 1 / -1;
+}
+
+.listLink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.metaLink {
+  color: var(--primary-600);
+  text-decoration: none;
+}
+
+.metaLink:hover {
+  text-decoration: underline;
+}
+
+.listItemMeta .metaError {
+  color: var(--danger-600);
+}

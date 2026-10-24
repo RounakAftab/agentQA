@@ -12,6 +12,7 @@ export function publicRequirement(r) {
     id: r.id,
     key: r.key,
     title: r.title,
+    source: r.source === 'manual' ? 'manual' : 'jira',
     description: r.description ?? '',
     priority: r.priority,
     status: r.status,

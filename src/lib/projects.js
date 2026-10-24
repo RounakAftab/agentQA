@@ -11,25 +11,48 @@ function healthFrom(passRate) {
   return 'critical';
 }
 
+const percent = (part, whole) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
+
+// Per-project counts from the QA Agent: finished runs by result, and requirements by status.
+async function agentStats() {
+  const [runs, requirements] = await Promise.all([
+    db.agentRun.groupBy({ by: ['projectId', 'status'], where: { status: { in: ['PASSED', 'FAILED'] } }, _count: { _all: true } }),
+    db.requirement.groupBy({ by: ['projectId', 'status'], _count: { _all: true } }),
+  ]);
+  const stats = new Map();
+  const entry = (id) => stats.get(id) ?? stats.set(id, { passed: 0, failed: 0, requirements: 0, automated: 0, failing: 0 }).get(id);
+  for (const row of runs) entry(row.projectId)[row.status === 'PASSED' ? 'passed' : 'failed'] += row._count._all;
+  for (const row of requirements) {
+    const s = entry(row.projectId);
+    s.requirements += row._count._all;
+    if (row.status === 'automated') s.automated += row._count._all;
+    if (row.status === 'failed') s.failing += row._count._all;
+  }
+  return stats;
+}
+
 async function loadProjects(where) {
-  const [projects, pending] = await Promise.all([
+  const [projects, pending, stats] = await Promise.all([
     db.project.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       include: {
         members: { include: { user: { select: { id: true, name: true, avatar: true, deletedAt: true } } } },
         ciRuns: { orderBy: { startedAt: 'desc' }, take: 1 },
-        _count: { select: { testCases: true, requirements: true } },
+        _count: { select: { requirements: true } },
       },
     }),
     db.approval.groupBy({ by: ['projectId'], where: { status: 'PENDING' }, _count: { _all: true } }),
+    agentStats(),
   ]);
 
   const pendingByProject = new Map(pending.map((row) => [row.projectId, row._count._all]));
 
   return projects.map((p) => {
     const run = p.ciRuns[0];
-    const passRate = run && run.totalTests > 0 ? Math.round((run.passed / run.totalTests) * 1000) / 10 : null;
+    const agent = stats.get(p.id) ?? { passed: 0, failed: 0, requirements: 0, automated: 0, failing: 0 };
+    // A CI report wins when there is one; otherwise the QA Agent's own results are used.
+    const passRate = run && run.totalTests > 0 ? percent(run.passed, run.totalTests) : percent(agent.passed, agent.passed + agent.failed);
     const members = p.members.filter((m) => !m.user.deletedAt).map((m) => m.user);
     return {
       id: p.id,
@@ -52,10 +75,13 @@ async function loadProjects(where) {
       e2eUsername: p.e2eUsername,
       e2ePasswordSet: Boolean(p.e2ePasswordEnc),
       health: healthFrom(passRate),
-      testCoverage: run ? run.coverage : null,
+      // Without a CI coverage report: the share of requirements that have a passing automated test.
+      testCoverage: run?.coverage ?? percent(agent.automated, agent.requirements),
       passRate,
-      totalTestCases: p._count.testCases,
+      // One automated test per requirement: re-running a requirement replaces its test.
+      totalTestCases: agent.automated,
       totalRequirements: p._count.requirements,
+      failingRequirements: agent.failing,
       pendingApprovals: pendingByProject.get(p.id) ?? 0,
       lastRun: run ? run.startedAt.toISOString() : null,
       memberIds: members.map((m) => m.id),

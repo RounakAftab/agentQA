@@ -9,7 +9,14 @@ import { PrismaClient } from '@prisma/client';
 import { runTicket, CancelledError } from './runTicket.mjs';
 import { redact } from './processes.mjs';
 
-const db = new PrismaClient();
+// A slow connection to a cloud database can take longer than Prisma's 10 s pool timeout.
+function databaseUrl() {
+  const url = process.env.DATABASE_URL;
+  if (!url || /[?&]pool_timeout=/.test(url)) return undefined;
+  return `${url}${url.includes('?') ? '&' : '?'}pool_timeout=60`;
+}
+
+const db = new PrismaClient({ datasourceUrl: databaseUrl() });
 const WORKER_ID = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
 const POLL_MS = 3_000;
 const HEARTBEAT_MS = 10_000;
@@ -119,9 +126,22 @@ async function execute(id) {
   console.log(`[worker] Finished ${run.issueKey}: ${status}`);
 }
 
+// The first query also wakes a sleeping cloud database, so give it a few tries before giving up.
+async function waitForDatabase(attempts = 5) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await checkDatabaseEncoding();
+    } catch (err) {
+      if (attempt === attempts) throw err;
+      console.warn(`[worker] Database not reachable yet (try ${attempt} of ${attempts}), retrying in 5s: ${err.message.split('\n').filter(Boolean).at(-1)}`);
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+  }
+}
+
 async function main() {
   checkConfig();
-  await checkDatabaseEncoding();
+  await waitForDatabase();
   console.log(ONCE ? `[worker] ${WORKER_ID} working through the queue` : `[worker] ${WORKER_ID} waiting for runs (Ctrl+C to stop)`);
   await heartbeat();
   const beat = setInterval(() => heartbeat().catch((e) => console.error('[worker] heartbeat:', e.message)), HEARTBEAT_MS);

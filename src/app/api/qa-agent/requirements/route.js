@@ -5,13 +5,15 @@ import { validateRequirementInput } from '@/lib/validation';
 import { MANUAL_KEY_PREFIX } from '@/lib/agentSteps';
 
 // Requirements written in AgentQA for a project: GET /api/qa-agent/requirements?projectId=...
+// Add &all=1 to include Jira tickets the agent has picked up.
 export async function GET(request) {
   const { response } = await requireUser();
   if (response) return response;
-  const projectId = new URL(request.url).searchParams.get('projectId');
+  const params = new URL(request.url).searchParams;
+  const projectId = params.get('projectId');
   if (!projectId) return json({ error: 'projectId is required' }, 400);
   const rows = await db.requirement.findMany({
-    where: { projectId, source: 'manual' },
+    where: params.get('all') === '1' ? { projectId } : { projectId, source: 'manual' },
     orderBy: { createdAt: 'desc' },
     include: requirementInclude,
   });

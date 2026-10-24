@@ -81,9 +81,10 @@ export function useJiraIssues(projectId) {
   };
 }
 
-export function useRequirements(projectId) {
+// `withJira` also returns the Jira tickets the agent has picked up.
+export function useRequirements(projectId, { withJira = false } = {}) {
   const { data, loaded, error, refresh } = usePolling(
-    projectId ? `/api/qa-agent/requirements?projectId=${encodeURIComponent(projectId)}` : null,
+    projectId ? `/api/qa-agent/requirements?projectId=${encodeURIComponent(projectId)}${withJira ? '&all=1' : ''}` : null,
     requirementsActive
   );
   return { requirements: data?.requirements ?? [], loaded, error, refresh };

@@ -8,24 +8,16 @@ import { useState } from 'react';
 import ProjectFormModal from '@/components/ProjectFormModal';
 import { useProjects, deleteProject } from '@/lib/dataStores';
 import { useCurrentUser } from '@/lib/teamStore';
-import { useWorkflowStore } from '@/lib/workflowStore';
-import {
-  getHealthColor,
-  getHealthLabel,
-  getRelativeTime,
-  getStatusLabel,
-  getStatusColor,
-} from '@/lib/format';
+import { useAgentRuns, useRequirements, RUN_STATUS } from '@/lib/qaAgentClient';
+import { getHealthColor, getHealthLabel, getRelativeTime } from '@/lib/format';
 import {
   ArrowLeft,
   GitBranch,
   ExternalLink,
   Activity,
   TestTubes,
-  CheckSquare,
-  Clock,
+  AlertCircle,
   TrendingUp,
-  Users,
   Pencil,
   Trash2,
   Loader2,
@@ -38,12 +30,20 @@ import {
 } from 'lucide-react';
 import styles from './page.module.css';
 
+const LIST_SIZE = 6;
+const REQUIREMENT_STATUS = {
+  open: { label: 'Not automated', color: 'neutral' },
+  analyzed: { label: 'Not automated', color: 'neutral' },
+  in_progress: { label: 'Running', color: 'info' },
+  automated: { label: 'Automated', color: 'success' },
+  failed: { label: 'Failed', color: 'danger' },
+};
+
 function ProjectDetailContent({ params }) {
   const resolvedParams = use(params);
   const router = useRouter();
   const { projects, loaded } = useProjects();
   const me = useCurrentUser();
-  const store = useWorkflowStore();
   const [editing, setEditing] = useState(false); // false, or the form section to open
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -52,12 +52,12 @@ function ProjectDetailContent({ params }) {
   const project = projects.find((p) => p.id === resolvedParams.id);
   const canManage = me.role === 'Admin' || me.role === 'QA Lead';
 
-  // Requirements, test cases and CI runs have no source connected yet, so these stay empty
-  // until the GitHub/CI integrations feed them. Workflow runs come from the AI Workflow page.
-  const ciRuns = [];
-  const projectRequirements = [];
-  const projectTestCases = [];
-  const workflows = store.runs.filter((run) => run.projectId === resolvedParams.id);
+  const { requirements, loaded: requirementsLoaded } = useRequirements(resolvedParams.id, { withJira: true });
+  const { runs, loaded: runsLoaded } = useAgentRuns(resolvedParams.id);
+  // Runs are newest first, so the first passing run of each requirement is its current test.
+  const automatedTests = runs.filter(
+    (run, i) => run.status === 'PASSED' && runs.findIndex((r) => r.status === 'PASSED' && r.issueKey === run.issueKey) === i
+  );
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -147,20 +147,22 @@ function ProjectDetailContent({ params }) {
 
         <Readiness project={project} canManage={canManage} onSetUp={setEditing} />
 
-        {/* Stats Cards */}
+        {/* Stats Cards: computed from QA Agent runs and requirements */}
         <div className={styles.statsGrid}>
           <div className={styles.statCard}>
             <TestTubes size={20} style={{ color: 'var(--primary-600)' }} />
             <div className={styles.statInfo}>
               <span className={styles.statValue}>{project.totalTestCases}</span>
-              <span className={styles.statLabel}>Test Cases</span>
+              <span className={styles.statLabel}>Automated tests</span>
+              <span className={styles.statHint}>Requirements with a passing test</span>
             </div>
           </div>
           <div className={styles.statCard}>
             <TrendingUp size={20} style={{ color: 'var(--success-600)' }} />
             <div className={styles.statInfo}>
               <span className={styles.statValue}>{project.passRate == null ? '—' : `${project.passRate}%`}</span>
-              <span className={styles.statLabel}>Pass Rate</span>
+              <span className={styles.statLabel}>Pass rate</span>
+              <span className={styles.statHint}>{project.passRate == null ? 'No finished runs yet' : 'Of finished QA Agent runs'}</span>
             </div>
           </div>
           <div className={styles.statCard}>
@@ -168,112 +170,107 @@ function ProjectDetailContent({ params }) {
             <div className={styles.statInfo}>
               <span className={styles.statValue}>{project.testCoverage == null ? '—' : `${project.testCoverage}%`}</span>
               <span className={styles.statLabel}>Coverage</span>
+              <span className={styles.statHint}>
+                {project.totalRequirements ? `${project.totalTestCases} of ${project.totalRequirements} requirements automated` : 'No requirements yet'}
+              </span>
             </div>
           </div>
           <div className={styles.statCard}>
-            <CheckSquare size={20} style={{ color: 'var(--danger-600)' }} />
+            <AlertCircle size={20} style={{ color: 'var(--danger-600)' }} />
             <div className={styles.statInfo}>
-              <span className={styles.statValue}>{project.pendingApprovals}</span>
-              <span className={styles.statLabel}>Pending Approvals</span>
+              <span className={styles.statValue}>{project.failingRequirements}</span>
+              <span className={styles.statLabel}>Need attention</span>
+              <span className={styles.statHint}>Requirements whose last run failed</span>
             </div>
           </div>
         </div>
 
         <div className={styles.detailGrid}>
-          {/* Requirements */}
+          {/* Requirements: written in AgentQA or picked up from Jira */}
           <div className={styles.section}>
             <h3 className={styles.sectionTitle}>Requirements</h3>
-            {projectRequirements.length > 0 ? (
+            {!requirementsLoaded ? (
+              <p className={styles.emptyText}>Loading…</p>
+            ) : requirements.length > 0 ? (
               <div className={styles.itemList}>
-                {projectRequirements.map(req => (
-                  <div key={req.id} className={styles.listItem}>
-                    <div className={styles.listItemTop}>
-                      <span className={styles.listItemTitle}>{req.title}</span>
-                      <span className={`badge badge-${getStatusColor(req.status)}`}>{getStatusLabel(req.status)}</span>
+                {requirements.slice(0, LIST_SIZE).map((req) => {
+                  const status = REQUIREMENT_STATUS[req.status] ?? REQUIREMENT_STATUS.open;
+                  return (
+                    <div key={req.id} className={styles.listItem}>
+                      <div className={styles.listItemTop}>
+                        <span className={styles.listItemTitle}>{req.key}: {req.title}</span>
+                        <span className={`badge badge-${status.color}`}>{status.label}</span>
+                      </div>
+                      <div className={styles.listItemMeta}>
+                        <span>{req.source === 'jira' ? 'Jira' : 'Written in AgentQA'}</span>
+                        <span>Priority: {req.priority}</span>
+                        {req.lastRun && (
+                          <Link href={`/dashboard/qa-agent/runs/${req.lastRun.id}`} className={styles.metaLink}>
+                            Last run {getRelativeTime(req.lastRun.queuedAt)}
+                          </Link>
+                        )}
+                      </div>
                     </div>
-                    <div className={styles.listItemMeta}>
-                      <span>{req.source}</span>
-                      <span>Priority: {req.priority}</span>
-                      {req.generatedTests > 0 && <span>{req.generatedTests} tests generated</span>}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <p className={styles.emptyText}>No requirements analyzed yet.</p>
+              <p className={styles.emptyText}>
+                No requirements yet. Add one, or pick up a Jira ticket, in the <Link href="/dashboard/qa-agent">QA Agent</Link>.
+              </p>
             )}
           </div>
 
-          {/* Recent Test Cases */}
+          {/* Automated tests: the latest passing run of each requirement */}
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Test Cases</h3>
-            {projectTestCases.length > 0 ? (
+            <h3 className={styles.sectionTitle}>Automated tests</h3>
+            {!runsLoaded ? (
+              <p className={styles.emptyText}>Loading…</p>
+            ) : automatedTests.length > 0 ? (
               <div className={styles.itemList}>
-                {projectTestCases.map(tc => (
-                  <div key={tc.id} className={styles.listItem}>
+                {automatedTests.slice(0, LIST_SIZE).map((run) => (
+                  <Link key={run.id} href={`/dashboard/qa-agent/runs/${run.id}`} className={`${styles.listItem} ${styles.listLink}`}>
                     <div className={styles.listItemTop}>
-                      <span className={styles.listItemTitle}>{tc.title}</span>
-                      <span className={`badge badge-${getStatusColor(tc.status)}`}>{getStatusLabel(tc.status)}</span>
+                      <span className={styles.listItemTitle}>{run.issueKey}: {run.issueSummary}</span>
+                      <span className="badge badge-success">Passed</span>
                     </div>
                     <div className={styles.listItemMeta}>
-                      <span>{tc.type}</span>
-                      {tc.aiGenerated && <span className={styles.aiBadge}>AI Generated</span>}
-                      {tc.lastResult && <span className={`badge badge-${tc.lastResult === 'pass' ? 'success' : 'danger'}`}>{tc.lastResult.toUpperCase()}</span>}
+                      {run.specPath && <span>{run.specPath}</span>}
+                      <span>{getRelativeTime(run.finishedAt ?? run.queuedAt)}</span>
+                      {run.prUrl && <span><GitPullRequest size={11} /> Pull request</span>}
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (
-              <p className={styles.emptyText}>No test cases yet.</p>
+              <p className={styles.emptyText}>No automated tests yet. They appear here when a QA Agent run passes.</p>
             )}
           </div>
 
-          {/* Recent CI Runs */}
-          <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Recent CI Runs</h3>
-            {ciRuns.length > 0 ? (
+          {/* Recent QA Agent runs */}
+          <div className={`${styles.section} ${styles.sectionWide}`}>
+            <h3 className={styles.sectionTitle}>Recent QA Agent runs</h3>
+            {!runsLoaded ? (
+              <p className={styles.emptyText}>Loading…</p>
+            ) : runs.length > 0 ? (
               <div className={styles.itemList}>
-                {ciRuns.map(run => (
-                  <div key={run.id} className={styles.listItem}>
+                {runs.slice(0, LIST_SIZE).map((run) => (
+                  <Link key={run.id} href={`/dashboard/qa-agent/runs/${run.id}`} className={`${styles.listItem} ${styles.listLink}`}>
                     <div className={styles.listItemTop}>
-                      <span className={styles.listItemTitle}>{run.commitMessage}</span>
-                      <span className={`badge badge-${run.status === 'passed' ? 'success' : 'danger'}`}>{run.status.toUpperCase()}</span>
+                      <span className={styles.listItemTitle}>{run.issueKey}: {run.issueSummary || '—'}</span>
+                      <span className={`badge badge-${RUN_STATUS[run.status].color}`}>{RUN_STATUS[run.status].label}</span>
                     </div>
                     <div className={styles.listItemMeta}>
-                      <span>{run.branch}</span>
-                      <span>{run.commit}</span>
-                      <span>{run.passed}/{run.totalTests} passed</span>
-                      <span>{getRelativeTime(run.startedAt)}</span>
+                      <span>{run.source === 'manual' ? 'Requirement' : 'Jira'}</span>
+                      {run.startedBy && <span>Started by {run.startedBy.name}</span>}
+                      <span>{getRelativeTime(run.queuedAt)}</span>
+                      {run.error && <span className={styles.metaError}>{run.error.slice(0, 120)}</span>}
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (
-              <p className={styles.emptyText}>No CI runs yet.</p>
-            )}
-          </div>
-
-          {/* Active Workflows */}
-          <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Workflow Runs</h3>
-            {workflows.length > 0 ? (
-              <div className={styles.itemList}>
-                {workflows.map(wf => (
-                  <div key={wf.id} className={styles.listItem}>
-                    <div className={styles.listItemTop}>
-                      <span className={styles.listItemTitle}>{wf.title}</span>
-                      <span className={`badge badge-${getStatusColor(wf.status)}`}>{getStatusLabel(wf.status)}</span>
-                    </div>
-                    <div className={styles.listItemMeta}>
-                      <span>{wf.steps.filter(s => s.status === 'completed').length}/{wf.steps.length} steps</span>
-                      <span>{getRelativeTime(wf.startedAt)}</span>
-                      {wf.checkpoint && <span className={styles.checkpointBadge}>Checkpoint saved</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className={styles.emptyText}>No workflow runs yet.</p>
+              <p className={styles.emptyText}>No runs yet.</p>
             )}
           </div>
         </div>
