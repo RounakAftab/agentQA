@@ -5,9 +5,24 @@
 const SECRET_ENV = ['GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'SESSION_SECRET', 'ENCRYPTION_KEY'];
 
 const count = (text, re) => (text.match(re) ?? []).length;
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// `secrets` are extra values that must not appear, such as the project's test account.
-export function checkSpec(content, plan, secrets = []) {
+// The password must never appear. The username often doubles as visible text (OrangeHRM's
+// "Admin" is also a menu item), so it only counts as hardcoded where it is typed into a
+// field, assigned to a user/login variable or used as an env fallback.
+function leaksCredentials(content, { username, password } = {}) {
+  if (password && password.length >= 4 && content.includes(password)) return true;
+  if (!username || username.length < 4) return false;
+  const quoted = `['"\`]${escapeRe(username)}['"\`]`;
+  return (
+    new RegExp(`\\.(fill|type|pressSequentially)\\([^)]*${quoted}`).test(content) ||
+    new RegExp(`\\b(user(name)?|login|email)\\w*\\s*[:=]\\s*${quoted}`, 'i').test(content) ||
+    new RegExp(`(\\?\\?|\\|\\|)\\s*${quoted}`).test(content)
+  );
+}
+
+// `credentials` is the project's test account: { username, password }.
+export function checkSpec(content, plan, credentials = {}) {
   const errors = [];
   const warnings = [];
 
@@ -26,7 +41,7 @@ export function checkSpec(content, plan, secrets = []) {
       errors.push(`The value of ${name} is written into the file. Read it from process.env.${name} instead.`);
     }
   }
-  if (secrets.some((value) => value && value.length >= 4 && content.includes(value))) {
+  if (leaksCredentials(content, credentials)) {
     errors.push('The test account username or password is written into the file. Read them from process.env.E2E_USERNAME and process.env.E2E_PASSWORD.');
   }
   if (/(password|passwd|secret|token)\w*\s*[:=]\s*['"`][^'"`\s]{3,}['"`]/i.test(content)) {

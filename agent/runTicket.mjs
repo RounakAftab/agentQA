@@ -9,7 +9,11 @@ import { specPathFor } from '../src/lib/agentSteps.js';
 import { checkSpec } from './guardrails.mjs';
 import { runSpec } from './playwright.mjs';
 import { prepareWorkspace, publishSpec } from './workspace.mjs';
-import { runAgentSession } from './session.mjs';
+import { runAgentSession, runHealerSession } from './session.mjs';
+
+// Healer sessions allowed after a failed verification (0 turns healing off).
+// Each one gets the same turn, budget and test-run limits as the author session.
+const HEAL_ATTEMPTS = Math.max(0, Number(process.env.AGENT_HEAL_ATTEMPTS ?? 1) || 0);
 
 export class CancelledError extends Error {}
 
@@ -115,46 +119,89 @@ export async function runTicket({ db, run, abortController }) {
 
     // 4. The agent plans, inspects the page, writes and iterates on the spec.
     await step('agent', `Starting agent (${process.env.AGENT_MODEL || 'claude-haiku-5-5'})`);
-    const outcome = await runAgentSession({
-      workspace,
-      project,
-      issue,
-      specPath,
-      testEnv,
-      credentials,
-      abortController,
-      ctx: {
-        log,
-        savePlan: async (plan) => {
-          await update({ testPlan: plan });
-          await log('agent', 'success', `Test plan: ${plan.steps.length} steps, ${plan.acceptanceCriteria.length} acceptance criteria`);
-        },
-        saveSpec: async (content) => {
-          await update({ specContent: content });
-          await log('agent', 'success', `Wrote ${specPath}`);
-        },
-        countTestRun: (n) => update({ testAttempts: n }),
+    let costUsd = 0;
+    const addCost = async (outcome) => {
+      if (outcome.costUsd == null) return;
+      costUsd += outcome.costUsd;
+      await update({ costUsd });
+    };
+    // Tools report under the step of the session that called them ('agent' or 'heal').
+    const sessionCtx = (tag) => ({
+      log,
+      savePlan: async (plan) => {
+        await update({ testPlan: plan });
+        await log(tag, 'success', `Test plan: ${plan.steps.length} steps, ${plan.acceptanceCriteria.length} acceptance criteria`);
       },
+      saveSpec: async (content) => {
+        await update({ specContent: content });
+        await log(tag, 'success', `Wrote ${specPath}`);
+      },
+      countTestRun: (n) => update({ testAttempts: n }),
     });
+    const session = { workspace, project, issue, specPath, testEnv, credentials, abortController };
+    const outcome = await runAgentSession({ ...session, ctx: sessionCtx('agent') });
     checkCancelled();
-    if (outcome.costUsd != null) await update({ costUsd: outcome.costUsd });
+    await addCost(outcome);
     if (outcome.summary) await log('agent', outcome.ok ? 'info' : 'warn', outcome.summary.slice(0, 4000));
     if (!outcome.plan) throw new Error('The agent finished without submitting a test plan.');
+    const plan = outcome.plan;
 
     // 5. Independent verification: the file on disk must pass the rules and the test must pass.
+    //    A spec that fails goes to the healer, then is verified again from scratch.
+    const verify = async (finished) => {
+      const content = await fs.readFile(path.join(workspace, specPath), 'utf8').catch(() => null);
+      if (!content) {
+        return {
+          problem: `The agent did not create ${specPath}.${finished.lastRejection ? ` Its last draft was rejected: ${finished.lastRejection}` : finished.ok ? '' : ` ${finished.summary}`}`,
+          draft: finished.lastDraft,
+        };
+      }
+      const { errors } = checkSpec(content, plan, credentials);
+      if (errors.length > 0) return { problem: `Spec breaks the rules: ${errors.join(' ')}`, draft: content };
+      const verification = await runSpec({ workspace, specPath, env: testEnv, signal: abortController.signal });
+      checkCancelled();
+      if (!verification.passed) {
+        const first = verification.failures[0];
+        return {
+          problem: `Verification run failed${first ? `: ${first.title} — ${first.error.split('\n')[0]}` : ''}`,
+          draft: content,
+          failures: verification.failures,
+        };
+      }
+      return { content, stats: verification.stats };
+    };
+
     await step('verify', 'Re-running the spec to confirm it passes');
-    const content = await fs.readFile(path.join(workspace, specPath), 'utf8').catch(() => null);
-    if (!content) throw new Error(`The agent did not create ${specPath}.`);
-    const { errors } = checkSpec(content, outcome.plan, [credentials.username, credentials.password]);
-    if (errors.length > 0) throw new Error(`Spec breaks the rules: ${errors.join(' ')}`);
-    const verification = await runSpec({ workspace, specPath, env: testEnv, signal: abortController.signal });
-    checkCancelled();
-    if (!verification.passed) {
-      const first = verification.failures[0];
-      throw new Error(`Verification run failed${first ? `: ${first.title} — ${first.error.split('\n')[0]}` : ''}`);
+    let result = await verify(outcome);
+    let testRuns = outcome.testRuns;
+    if (result.problem) {
+      await log('verify', 'warn', result.problem);
+      for (let attempt = 1; result.problem && attempt <= HEAL_ATTEMPTS; attempt++) {
+        await step('heal', `Healer attempt ${attempt} of ${HEAL_ATTEMPTS}: ${result.problem.slice(0, 300)}`);
+        const healed = await runHealerSession({
+          ...session,
+          ctx: sessionCtx('heal'),
+          plan,
+          draft: result.draft,
+          problem: result.problem,
+          failures: result.failures,
+          testRunsSoFar: testRuns,
+        });
+        checkCancelled();
+        await addCost(healed);
+        testRuns = healed.testRuns;
+        if (healed.summary) await log('heal', healed.ok ? 'info' : 'warn', healed.summary.slice(0, 4000));
+        await log('heal', 'info', 'Re-running the healed spec to confirm it passes');
+        result = await verify(healed);
+        if (result.problem) await log('heal', 'warn', result.problem);
+      }
+      if (result.problem) throw new Error(HEAL_ATTEMPTS > 0 ? `${result.problem} (still failing after healing)` : result.problem);
+    } else {
+      await skip('heal', 'Skipped: the spec passed on the first verification');
     }
+    const { content } = result;
     await update({ verifiedPass: true, specContent: content });
-    await log('verify', 'success', `Passed: ${verification.stats.expected} test(s) in ${(verification.stats.durationMs / 1000).toFixed(1)}s`);
+    await log(skipped.includes('heal') ? 'verify' : 'heal', 'success', `Passed: ${result.stats.expected} test(s) in ${(result.stats.durationMs / 1000).toFixed(1)}s`);
 
     // 6. Commit, push and open a draft PR (only with a test repository).
     let prUrl = null;

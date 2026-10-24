@@ -11,7 +11,7 @@
 # Optional secret:
 #   AGENT_GITHUB_TOKEN  push spec branches and open draft PRs in the projects' test repositories
 # Optional repository variables: PRODUCTION_URL (links in Jira comments), AGENT_MODEL,
-#   AGENT_MAX_BUDGET_USD, AGENT_MAX_TURNS, AGENT_MAX_TEST_RUNS
+#   AGENT_MAX_BUDGET_USD, AGENT_MAX_TURNS, AGENT_MAX_TEST_RUNS, AGENT_HEAL_ATTEMPTS
 #
 # This repository is public, so job logs are public. The worker logs only ticket keys, its own
 # progress and redacted errors; the agent's details are stored in the database, not the log.
@@ -48,6 +48,7 @@ jobs:
       AGENT_MAX_BUDGET_USD: ${{ vars.AGENT_MAX_BUDGET_USD || '0.30' }}
       AGENT_MAX_TURNS: ${{ vars.AGENT_MAX_TURNS || '40' }}
       AGENT_MAX_TEST_RUNS: ${{ vars.AGENT_MAX_TEST_RUNS || '3' }}
+      AGENT_HEAL_ATTEMPTS: ${{ vars.AGENT_HEAL_ATTEMPTS || '1' }}
       NEXT_TELEMETRY_DISABLED: '1'
 
     steps:

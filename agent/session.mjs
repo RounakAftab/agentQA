@@ -39,17 +39,59 @@ Type: ${issue.type || 'n/a'} · Priority: ${issue.priority || 'n/a'}
 ${issue.description || '(The ticket has no description.)'}`;
 }
 
-// Runs the agent. `ctx` carries the run state and callbacks the tools report through.
-export async function runAgentSession({ workspace, project, issue, specPath, testEnv, credentials, abortController, ctx }) {
-  let plan = null;
+// What the healer is told: the plan to keep, the spec (or rejected draft) and why it fails.
+export function healerPrompt({ issue, project, specPath, plan, draft, problem, failures }) {
+  const failureText = (failures ?? []).map((f) => `- ${f.title} (${f.status}):\n${f.error}`).join('\n\n');
+  return `Heal the failing test for ${issue.key}.
+
+Project: ${project.name}
+Application under test: ${project.appBaseUrl}  (also available to tests as process.env.BASE_URL)
+Spec file: ${specPath}
+
+# ${issue.key}: ${issue.summary}
+
+${issue.description || '(The ticket has no description.)'}
+
+## Test plan (fixed: keep every step and assert every criterion)
+Flow: ${plan.flow}
+Steps:
+${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+Acceptance criteria:
+${plan.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+## Why it fails
+${problem}
+${failureText ? `\n${failureText}\n` : ''}
+## Current ${draft ? 'spec' : 'state'}
+${draft ? `\`\`\`ts\n${draft}\n\`\`\`` : `No spec was saved. Write ${specPath} from the plan.`}`;
+}
+
+// Writes and fixes a spec for one ticket. The author session plans and writes it; the healer
+// session (`plan` given) repairs a spec that failed verification without changing the plan.
+// `ctx` carries the run state and callbacks the tools report through.
+export function runAgentSession(options) {
+  return runSession({ ...options, mode: 'author' });
+}
+
+export function runHealerSession(options) {
+  return runSession({ ...options, mode: 'heal' });
+}
+
+async function runSession({ mode, workspace, project, issue, specPath, testEnv, credentials, abortController, ctx, plan: fixedPlan, draft, problem, failures, testRunsSoFar = 0 }) {
+  const healing = mode === 'heal';
+  const tag = healing ? 'heal' : 'agent';
+  let plan = fixedPlan ?? null;
   let testRuns = 0;
   let lastResult = null;
+  let lastDraft = null;
+  let lastRejection = null;
 
   const qa = createSdkMcpServer({
     name: 'qa',
     version: '1.0.0',
     tools: [
-      tool(
+      // The healer works to the author's plan; it may not rewrite what the test must prove.
+      !healing && tool(
         'submit_test_plan',
         'Record the user flow, ordered test steps and acceptance criteria extracted from the Jira ticket. Call this before write_spec.',
         {
@@ -106,14 +148,18 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
         { content: z.string().min(20).describe('Complete TypeScript source of the spec file') },
         async ({ content }) => {
           if (!plan) return text('Call submit_test_plan first.');
-          const { errors, warnings } = checkSpec(content, plan, [credentials.username, credentials.password]);
+          const { errors, warnings } = checkSpec(content, plan, credentials);
           if (errors.length > 0) {
-            await ctx.log('agent', 'warn', `Spec rejected: ${errors.join(' ')}`);
+            lastDraft = content;
+            lastRejection = errors.join(' ');
+            await ctx.log(tag, 'warn', `Spec rejected: ${lastRejection}`);
             return { ...text(`Not saved. Fix these problems:\n- ${errors.join('\n- ')}`), isError: true };
           }
           const full = path.join(workspace, specPath);
           await fs.mkdir(path.dirname(full), { recursive: true });
           await fs.writeFile(full, content, 'utf8');
+          lastDraft = null;
+          lastRejection = null;
           await ctx.saveSpec(content);
           return text(`Saved ${specPath}.${warnings.length ? `\nWarnings:\n- ${warnings.join('\n- ')}` : ''}`);
         }
@@ -125,9 +171,9 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
         async () => {
           if (testRuns >= MAX_TEST_RUNS) return { ...text(`Run limit (${MAX_TEST_RUNS}) reached. Stop and summarise what is failing.`), isError: true };
           testRuns += 1;
-          await ctx.countTestRun(testRuns);
+          await ctx.countTestRun(testRunsSoFar + testRuns);
           lastResult = await runSpec({ workspace, specPath, env: testEnv, signal: abortController.signal });
-          await ctx.log('agent', lastResult.passed ? 'success' : 'warn', lastResult.passed ? `Test run ${testRuns} passed` : `Test run ${testRuns} failed`);
+          await ctx.log(tag, lastResult.passed ? 'success' : 'warn', lastResult.passed ? `Test run ${testRuns} passed` : `Test run ${testRuns} failed`);
           return text(
             lastResult.passed
               ? { passed: true, stats: lastResult.stats }
@@ -135,7 +181,7 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
           );
         }
       ),
-    ],
+    ].filter(Boolean),
   });
 
   const env = { ...process.env };
@@ -143,10 +189,12 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
   // An empty key from .env would override the CLI login.
   if (!env.ANTHROPIC_API_KEY) delete env.ANTHROPIC_API_KEY;
 
-  const systemPrompt = await fs.readFile(path.join(here, 'systemPrompt.md'), 'utf8');
+  const systemPrompt = await fs.readFile(path.join(here, healing ? 'healerPrompt.md' : 'systemPrompt.md'), 'utf8');
 
   const session = query({
-    prompt: ticketPrompt({ issue, project, specPath }),
+    prompt: healing
+      ? healerPrompt({ issue, project, specPath, plan, draft, problem, failures })
+      : ticketPrompt({ issue, project, specPath }),
     options: {
       model: process.env.AGENT_MODEL || 'claude-haiku-5-5',
       systemPrompt,
@@ -177,8 +225,8 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
   for await (const message of session) {
     if (message.type === 'assistant') {
       for (const block of message.message.content ?? []) {
-        if (block.type === 'text' && block.text.trim()) await ctx.log('agent', 'info', block.text.trim().slice(0, 2000));
-        if (block.type === 'tool_use') await ctx.log('agent', 'info', `→ ${block.name.replace(/^mcp__\w+?__/, '')}`);
+        if (block.type === 'text' && block.text.trim()) await ctx.log(tag, 'info', block.text.trim().slice(0, 2000));
+        if (block.type === 'tool_use') await ctx.log(tag, 'info', `→ ${block.name.replace(/^mcp__\w+?__/, '')}`);
       }
     } else if (message.type === 'result') {
       result = message;
@@ -198,5 +246,9 @@ export async function runAgentSession({ workspace, project, issue, specPath, tes
             ? `Stopped after the maximum of ${Number(process.env.AGENT_MAX_TURNS) || 40} agent steps (AGENT_MAX_TURNS).`
             : (result?.errors ?? []).join('; ') || result?.subtype || 'Agent stopped',
     lastTestPassed: Boolean(lastResult?.passed),
+    testRuns: testRunsSoFar + testRuns,
+    // A draft the guard refused and never replaced, so the healer can start from it.
+    lastDraft,
+    lastRejection,
   };
 }

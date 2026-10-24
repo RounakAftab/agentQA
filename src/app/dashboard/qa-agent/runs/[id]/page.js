@@ -29,7 +29,7 @@ import styles from './page.module.css';
 const OPERATOR_ROLES = ['Admin', 'QA Lead', 'QA Engineer'];
 
 // Short names for the activity log, e.g. "jira.read" -> "Read requirement" for a manual run.
-const LOG_NAMES = { runner: 'Runner', workspace: 'Test project', agent: 'Agent', verify: 'Verify', publish: 'Publish', done: 'Finished' };
+const LOG_NAMES = { runner: 'Runner', workspace: 'Test project', agent: 'Agent', verify: 'Verify', heal: 'Healer', publish: 'Publish', done: 'Finished' };
 // A GitHub Actions runner usually picks a run up within a minute or two.
 const RUNNER_SLOW_MS = 4 * 60_000;
 function logStepLabel(id, source) {

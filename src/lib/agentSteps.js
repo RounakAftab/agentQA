@@ -8,6 +8,7 @@ export const AGENT_STEPS = [
   { id: 'workspace', label: 'Prepare test project' },
   { id: 'agent', label: 'Plan, inspect page and write test' },
   { id: 'verify', label: 'Verify test passes' },
+  { id: 'heal', label: 'Heal failing test' }, // only when verification fails
   { id: 'publish', label: 'Commit and open pull request' },
   { id: 'jira.done', label: 'Append note and move to Done', manualLabel: 'Save results' },
 ];
