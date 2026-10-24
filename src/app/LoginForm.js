@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { refreshTeam } from '@/lib/teamStore';
 import styles from './LoginPage.module.css';
@@ -170,7 +171,12 @@ export default function LoginForm() {
             </div>
 
             <div className={styles.formGroup}>
-              <label htmlFor="password" className="label">Password</label>
+              <div className={styles.labelRow}>
+                <label htmlFor="password" className="label">Password</label>
+                <Link href="/forgot-password" className={styles.forgotLink} id="link-forgot-password">
+                  Forgot password?
+                </Link>
+              </div>
               <div className={styles.passwordWrapper}>
                 <input
                   id="password"

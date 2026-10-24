@@ -18,14 +18,14 @@ async function findValidToken(token) {
 export async function GET(request) {
   const record = await findValidToken(new URL(request.url).searchParams.get('token'));
   if (!record) return json({ valid: false });
-  return json({ valid: true, name: record.user.name, email: record.user.email });
+  return json({ valid: true, name: record.user.name, email: record.user.email, purpose: record.purpose });
 }
 
 export async function POST(request) {
   const body = await readJson(request);
   const record = await findValidToken(body.token);
   if (!record) {
-    return json({ error: 'This link is invalid or has expired. Ask an administrator to resend your invitation.' }, 400);
+    return json({ error: 'This link is invalid or has expired. Use "Forgot password?" on the sign-in page to get a new one.' }, 400);
   }
 
   const password = validatePassword(body.password);
@@ -38,11 +38,12 @@ export async function POST(request) {
     db.passwordToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
   ]);
 
+  const isReset = record.purpose === 'reset';
   await recordAudit({
     userId: record.userId,
-    action: 'user.password_set',
+    action: isReset ? 'user.password_reset' : 'user.password_set',
     target: record.user.name,
-    details: 'Accepted the invitation and set a password',
+    details: isReset ? 'Reset their password with an emailed link' : 'Accepted the invitation and set a password',
   });
 
   // Deliberately no auto sign-in: the user signs in with the password they just chose.

@@ -226,6 +226,23 @@
 }
 
 /* Password visibility toggle */
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.forgotLink {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--primary-600);
+  text-decoration: none;
+}
+
+.forgotLink:hover {
+  text-decoration: underline;
+}
+
 .passwordWrapper {
   position: relative;
 }

@@ -26,7 +26,11 @@ export default function SetPasswordForm() {
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
-        setInvite(data.valid ? { state: 'valid', name: data.name, email: data.email } : { state: 'invalid' });
+        setInvite(
+          data.valid
+            ? { state: 'valid', name: data.name, email: data.email, reset: data.purpose === 'reset' }
+            : { state: 'invalid' }
+        );
       })
       .catch(() => !cancelled && setInvite({ state: 'invalid' }));
     return () => {
@@ -74,7 +78,7 @@ export default function SetPasswordForm() {
 
         {invite.state === 'checking' && (
           <p className={`${styles.muted} ${styles.row}`}>
-            <Loader2 size={16} className="animate-spin" /> Checking your invitation...
+            <Loader2 size={16} className="animate-spin" /> Checking your link...
           </p>
         )}
 
@@ -82,10 +86,13 @@ export default function SetPasswordForm() {
           <div id="invite-invalid">
             <h1 className={styles.title}>This link can&apos;t be used</h1>
             <p className={styles.muted}>
-              The invitation link is invalid, has expired, or was already used. Ask an administrator to resend your
-              invitation. If you have already set a password, you can sign in.
+              The link is invalid, has expired, or was already used. Request a new one below, or ask an administrator to
+              resend your invitation. If you have already set a password, you can sign in.
             </p>
-            <Link href="/" className={`btn btn-primary ${styles.fullWidth}`}>
+            <Link href="/forgot-password" className={`btn btn-primary ${styles.fullWidth}`}>
+              Get a new link
+            </Link>
+            <Link href="/" className={`btn btn-secondary ${styles.fullWidth}`}>
               Go to sign in
             </Link>
           </div>
@@ -93,9 +100,10 @@ export default function SetPasswordForm() {
 
         {invite.state === 'valid' && (
           <form onSubmit={submit} noValidate>
-            <h1 className={styles.title}>Set your password</h1>
+            <h1 className={styles.title}>{invite.reset ? 'Reset your password' : 'Set your password'}</h1>
             <p className={styles.muted}>
-              Welcome, {invite.name}. Choose a password for <strong>{invite.email}</strong>.
+              {invite.reset ? `Hi ${invite.name}. Choose a new password for ` : `Welcome, ${invite.name}. Choose a password for `}
+              <strong>{invite.email}</strong>.
             </p>
 
             {error && (
