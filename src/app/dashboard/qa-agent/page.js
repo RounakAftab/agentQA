@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
@@ -38,6 +38,10 @@ import {
   Trash2,
   MonitorPlay,
   GitPullRequest,
+  HelpCircle,
+  ChevronDown,
+  ListChecks,
+  FolderKanban,
 } from 'lucide-react';
 import styles from './page.module.css';
 
@@ -127,6 +131,8 @@ export default function QaAgentPage() {
     <>
       <Header title="QA Agent" subtitle="Turn Jira tickets and written requirements into verified Playwright tests" />
       <div className={styles.content}>
+        <HowItWorks />
+
         <div className={styles.statusBar}>
           <label className={styles.projectPicker}>
             <span className={styles.pickerLabel}>Project</span>
@@ -484,6 +490,82 @@ export default function QaAgentPage() {
         </div>
       )}
     </>
+  );
+}
+
+const GUIDE_KEY = 'agentqa.qaAgent.guideHidden';
+const GUIDE_STEPS = [
+  {
+    icon: FolderKanban,
+    title: 'Choose a project',
+    text: 'The project holds the link of the website you test and its test login. Set them once under Projects.',
+  },
+  {
+    icon: FileText,
+    title: 'Say what to test',
+    text: 'Requirements tab: click "New requirement" and describe it in plain words, e.g. "Log in with a valid user and see the Dashboard". Or pick a ticket on the Jira tab.',
+  },
+  {
+    icon: Bot,
+    title: 'Click Run',
+    text: 'The AI opens your website in a real browser, writes the test cases and the test code, then runs the test to prove it passes. It takes a few minutes. The Worker above must be Online.',
+  },
+  {
+    icon: ListChecks,
+    title: 'Open the run to see the results',
+    text: 'Click it under "Recent runs". Test cases: the steps and expected results. Test code: the Playwright file, ready to download. Pull request: the same file in your GitHub test repository, if one is set.',
+  },
+];
+
+// Whether the guide is collapsed, remembered per browser. Falls back to memory when storage is blocked.
+const guideListeners = new Set();
+let guideHiddenFallback = false;
+const readGuideHidden = () => {
+  try {
+    return window.localStorage.getItem(GUIDE_KEY) === '1';
+  } catch {
+    return guideHiddenFallback;
+  }
+};
+const subscribeGuide = (listener) => {
+  guideListeners.add(listener);
+  return () => guideListeners.delete(listener);
+};
+
+// A short, collapsible explanation of the whole flow for people new to the QA Agent.
+function HowItWorks() {
+  const hidden = useSyncExternalStore(subscribeGuide, readGuideHidden, () => false);
+  const toggle = () => {
+    guideHiddenFallback = !hidden;
+    try {
+      window.localStorage.setItem(GUIDE_KEY, hidden ? '0' : '1');
+    } catch {}
+    guideListeners.forEach((listener) => listener());
+  };
+
+  return (
+    <section className={`card ${styles.guide}`} aria-labelledby="guide-title">
+      <button type="button" className={styles.guideToggle} onClick={toggle} aria-expanded={!hidden} id="btn-toggle-guide">
+        <HelpCircle size={16} />
+        <span id="guide-title">How it works: from a requirement to a tested script in 4 steps</span>
+        <ChevronDown size={16} className={`${styles.guideChevron} ${hidden ? '' : styles.guideChevronOpen}`} />
+      </button>
+      {!hidden && (
+        <ol className={styles.guideSteps}>
+          {GUIDE_STEPS.map((step, i) => (
+            <li key={step.title} className={styles.guideStep}>
+              <span className={styles.guideNumber}>{i + 1}</span>
+              <div>
+                <h4 className={styles.guideTitle}>
+                  <step.icon size={15} /> {step.title}
+                </h4>
+                <p className={styles.guideText}>{step.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 

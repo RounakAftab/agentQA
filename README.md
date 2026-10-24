@@ -114,4 +114,4 @@ See [DEPLOY.md](DEPLOY.md) for a free setup on Vercel + Neon.
 Working: sign-in with emailed invitations, user management, projects, audit trail.
 QA Agent: Jira tickets to verified Playwright tests (needs the worker running).
 Not connected yet: GitHub and CI integrations (requirements, test cases, CI runs and approvals have
-tables but no data source), and an AI backend. The AI Workflow page is a clearly labelled simulation.
+tables but no data source). To review a generated test, open the pull request the QA Agent creates.

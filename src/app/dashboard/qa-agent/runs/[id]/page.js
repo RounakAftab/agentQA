@@ -232,7 +232,8 @@ function RunDetail({ params }) {
 
         <div className={styles.grid}>
           <section className={`card ${styles.panel}`}>
-            <h3 className={styles.panelTitle}>Pipeline</h3>
+            <h3 className={`${styles.panelTitle} ${styles.titleWithHint}`}>Progress</h3>
+            <p className={styles.hint}>What the AI is doing right now. Each step turns green when it is done.</p>
             <ol className={styles.steps}>
               {steps.map((s, i) => (
                 <li key={s.id} className={`${styles.step} ${styles[`step_${states[i]}`]}`}>
@@ -245,44 +246,58 @@ function RunDetail({ params }) {
           </section>
 
           <section className={`card ${styles.panel}`}>
-            <h3 className={styles.panelTitle}>
-              <ListChecks size={16} /> Test plan
+            <h3 className={`${styles.panelTitle} ${styles.titleWithHint}`}>
+              <ListChecks size={16} /> Test cases
             </h3>
+            <p className={styles.hint}>What the test checks: the steps it follows and the results it expects.</p>
             {run.testPlan ? (
               <div className={styles.plan}>
                 <p className={styles.flow}>{run.testPlan.flow}</p>
-                <h4 className={styles.subTitle}>Steps</h4>
+                <h4 className={styles.subTitle}>Test steps</h4>
                 <ol className={styles.planList}>
                   {run.testPlan.steps.map((s, i) => <li key={i}>{s}</li>)}
                 </ol>
-                <h4 className={styles.subTitle}>Acceptance criteria</h4>
+                <h4 className={styles.subTitle}>Expected results</h4>
                 <ul className={styles.planList}>
                   {run.testPlan.acceptanceCriteria.map((c, i) => <li key={i}>{c}</li>)}
                 </ul>
               </div>
             ) : (
-              <p className={styles.empty}>The agent has not submitted a plan yet.</p>
+              <p className={styles.empty}>
+                {active ? 'The AI writes the test cases after it has read the requirement.' : 'No test cases were written in this run.'}
+              </p>
             )}
           </section>
         </div>
 
         <section className={`card ${styles.panel}`}>
-          <h3 className={styles.panelTitle}>
-            <FileCode2 size={16} /> {run.specPath ?? 'Spec'}
-            {run.verifiedPass && <span className="badge badge-success">Verified</span>}
+          <h3 className={`${styles.panelTitle} ${styles.titleWithHint}`}>
+            <FileCode2 size={16} /> Test code
+            {run.verifiedPass && <span className="badge badge-success">Passed when run</span>}
             {run.specContent && (
               <button className={`btn btn-secondary btn-sm ${styles.titleAction}`} onClick={downloadSpec} id="btn-download-spec">
                 <Download size={14} /> Download
               </button>
             )}
           </h3>
-          {run.specContent ? <pre className={styles.code}>{run.specContent}</pre> : <p className={styles.empty}>No spec written yet.</p>}
+          <p className={styles.hint}>
+            The automated Playwright test{run.specPath ? <> (<code>{run.specPath}</code>)</> : ''}.{' '}
+            {run.prUrl ? 'It is also in the pull request linked at the top.' : 'Download it to add it to your test project.'}
+          </p>
+          {run.specContent ? (
+            <pre className={styles.code}>{run.specContent}</pre>
+          ) : (
+            <p className={styles.empty}>
+              {active ? 'The code appears here once the AI has written it.' : 'No test code was written in this run.'}
+            </p>
+          )}
         </section>
 
         <section className={`card ${styles.panel}`}>
-          <h3 className={styles.panelTitle}>
+          <h3 className={`${styles.panelTitle} ${styles.titleWithHint}`}>
             <ScrollText size={16} /> Activity
           </h3>
+          <p className={styles.hint}>A detailed log of every action. Useful when a run fails.</p>
           {run.events.length === 0 ? (
             <p className={styles.empty}>Nothing logged yet.</p>
           ) : (

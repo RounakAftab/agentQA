@@ -159,7 +159,7 @@ export default function ApprovalsPage() {
                   <AlertCircle size={28} />
                   <p>
                     {approvalsList.length === 0
-                      ? 'No approval requests yet. They appear here when the AI workflow submits tests for review.'
+                      ? 'No approval requests. To review a test the QA Agent wrote, open its run and the pull request it created.'
                       : 'No approval requests match the filter'}
                   </p>
                 </div>

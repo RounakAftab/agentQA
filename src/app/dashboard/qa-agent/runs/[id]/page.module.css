@@ -275,3 +275,21 @@
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
+
+.titleWithHint {
+  margin-bottom: var(--space-1);
+}
+
+.hint {
+  font-size: var(--text-sm);
+  color: var(--slate-500);
+  margin-bottom: var(--space-4);
+}
+
+.hint code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--slate-100);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}

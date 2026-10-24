@@ -136,7 +136,7 @@ folder under `prisma/migrations`.
 
 - **Cold starts:** after a quiet period the Neon database wakes up on the next request, so the
   first page load can take a few seconds.
-- **AI Workflow page:** it is a simulation. Its records are stored in each person's browser only.
+- **AI Workflow page:** removed (it was a simulation). The link now opens the QA Agent.
 - **Requirements, test cases, CI runs, approvals:** the tables exist but nothing fills them until the
   GitHub/CI integrations are built.
 - **Backups:** free database plans keep little history. Export anything important regularly
