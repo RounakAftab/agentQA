@@ -29,6 +29,7 @@ enum ApprovalStatus {
   APPROVED
   CHANGES_REQUESTED
   REJECTED
+  SUPERSEDED // a newer QA Agent run of the same ticket replaced it before a decision
 }
 
 enum WorkflowStatus {
@@ -207,17 +208,22 @@ model Approval {
   description  String
   status       ApprovalStatus @default(PENDING)
   requestedBy  String // "AI Agent"
-  assignedToId String
-  approvedById String?
+  assignedToId String? // null = any QA lead or admin may decide
+  approvedById String? // who made the latest decision (approve, request changes or reject)
+  decidedAt    DateTime?
+  agentRunId   String?        @unique // the QA Agent run whose verified spec is under review
   aiConfidence Float          @default(0.9)
   codePreview  String         @db.Text
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
   testCase   TestCase? @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
-  assignedTo User      @relation("AssignedApprovals", fields: [assignedToId], references: [id])
+  assignedTo User?     @relation("AssignedApprovals", fields: [assignedToId], references: [id], onDelete: SetNull)
   approvedBy User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
+  agentRun   AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
   comments   Comment[]
+
+  @@index([status, createdAt])
 }
 
 model Comment {
@@ -319,6 +325,7 @@ model AgentRun {
   startedBy   User?           @relation(fields: [startedById], references: [id], onDelete: SetNull)
   requirement Requirement?    @relation(fields: [requirementId], references: [id], onDelete: SetNull)
   events      AgentRunEvent[]
+  approval    Approval?
 
   @@index([status, queuedAt])
   @@index([projectId, issueKey])

@@ -57,6 +57,7 @@ const STATUS_LABELS = {
   passed: 'Passed',
   failed: 'Failed',
   awaiting_approval: 'Awaiting Approval',
+  superseded: 'Superseded',
 };
 
 const STATUS_COLORS = {
@@ -71,6 +72,7 @@ const STATUS_COLORS = {
   passed: 'success',
   failed: 'danger',
   awaiting_approval: 'warning',
+  superseded: 'neutral',
 };
 
 export const getStatusLabel = (status) => STATUS_LABELS[status] || status;

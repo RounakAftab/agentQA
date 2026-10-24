@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { signOut } from '@/lib/teamStore';
-import { useWorkflowStore } from '@/lib/workflowStore';
+import { useApprovals } from '@/lib/dataStores';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -31,8 +31,7 @@ const navItems = [
 
 export default function Sidebar({ collapsed, onToggle }) {
   const pathname = usePathname();
-  const { approvals } = useWorkflowStore();
-  const pendingApprovals = approvals.filter((a) => a.status === "pending").length;
+  const { pendingCount: pendingApprovals } = useApprovals();
 
   const isActive = (href) => {
     if (href === '/dashboard') return pathname === '/dashboard';

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Bell, Search, Menu, ChevronDown, User } from 'lucide-react';
 import Link from 'next/link';
 import { useCurrentUser, signOut } from '@/lib/teamStore';
-import { useWorkflowStore } from '@/lib/workflowStore';
+import { useApprovals } from '@/lib/dataStores';
 import { getRelativeTime } from '@/lib/format';
 import styles from './Header.module.css';
 
@@ -15,7 +15,7 @@ export default function Header({ title, subtitle, onMenuToggle }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Notifications are approvals that are still waiting for a decision.
-  const { approvals } = useWorkflowStore();
+  const { approvals } = useApprovals();
   const notifications = approvals
     .filter((a) => a.status === 'pending')
     .map((a) => ({ id: a.id, message: `Review requested: ${a.title}`, time: getRelativeTime(a.createdAt), unread: true }));

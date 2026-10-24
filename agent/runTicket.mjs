@@ -186,8 +186,10 @@ export async function runTicket({ db, run, abortController }) {
       await log('jira.done', 'success', done.changed ? `Moved to ${statuses.done}` : `Already ${statuses.done}`);
       await audit('jira.transitioned', `${statuses.inProgress} → ${statuses.done}`);
     }
-    await recordTestCase(db, project, requirementId, issue);
+    const testCase = await recordTestCase(db, project, requirementId, issue);
     await log('jira.done', 'success', `Saved test case for ${issue.key}`);
+    await requestApproval(db, { run, testCase, issue, specPath, content, prUrl });
+    await log('jira.done', 'success', 'Sent the spec to Approvals for review');
     await audit('agent.run.passed', `${specPath}${prUrl ? ` · ${prUrl}` : ''}`);
     return { status: 'PASSED' };
   } catch (err) {
@@ -205,7 +207,7 @@ export async function runTicket({ db, run, abortController }) {
 // Keeps the dashboard's requirement and test-case counts in step with real automation.
 async function recordTestCase(db, project, requirementId, issue) {
   await db.requirement.update({ where: { id: requirementId }, data: { generatedTests: { increment: 1 }, status: 'automated' } });
-  await db.testCase.create({
+  return db.testCase.create({
     data: {
       projectId: project.id,
       requirementId,
@@ -215,6 +217,32 @@ async function recordTestCase(db, project, requirementId, issue) {
       aiGenerated: true,
       automationStatus: 'scripted',
       lastResult: 'pass',
+    },
+  });
+}
+
+// A verified spec still needs a human sign-off before it is trusted. Opens a review in
+// Approvals and retires any open review of an earlier run of the same ticket.
+async function requestApproval(db, { run, testCase, issue, specPath, content, prUrl }) {
+  await db.approval.updateMany({
+    where: {
+      projectId: run.projectId,
+      status: { in: ['PENDING', 'CHANGES_REQUESTED'] },
+      agentRun: { issueKey: run.issueKey },
+      NOT: { agentRunId: run.id },
+    },
+    data: { status: 'SUPERSEDED', decidedAt: new Date() },
+  });
+  await db.approval.create({
+    data: {
+      projectId: run.projectId,
+      agentRunId: run.id,
+      testCaseId: testCase.id,
+      type: 'automation_script',
+      title: `${issue.key}: ${issue.summary}`.slice(0, 300),
+      description: `Playwright spec ${specPath} written by the QA Agent and verified passing.${prUrl ? ` Pull request: ${prUrl}` : ''}`,
+      requestedBy: 'QA Agent',
+      codePreview: content,
     },
   });
 }

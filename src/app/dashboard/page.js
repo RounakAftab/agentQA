@@ -5,7 +5,6 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import { useProjects, useAuditEvents } from '@/lib/dataStores';
 import { useUserDirectory } from '@/lib/teamStore';
-import { useWorkflowStore } from '@/lib/workflowStore';
 import { getRelativeTime, getHealthColor, getHealthLabel } from '@/lib/format';
 import {
   FolderKanban,
@@ -58,7 +57,6 @@ function WeeklyActivityChart({ events }) {
 export default function DashboardPage() {
   const { projects, loaded } = useProjects();
   const { events: savedEvents } = useAuditEvents();
-  const { approvals: workflowApprovals } = useWorkflowStore();
   const users = useUserDirectory();
 
   const stats = useMemo(() => {
@@ -68,11 +66,9 @@ export default function DashboardPage() {
       avgPassRate: withRuns.length
         ? Math.round((withRuns.reduce((sum, p) => sum + p.passRate, 0) / withRuns.length) * 10) / 10
         : null,
-      pending:
-        projects.reduce((sum, p) => sum + p.pendingApprovals, 0) +
-        workflowApprovals.filter((a) => a.status === 'pending').length,
+      pending: projects.reduce((sum, p) => sum + p.pendingApprovals, 0),
     };
-  }, [projects, workflowApprovals]);
+  }, [projects]);
 
   const recent = savedEvents.slice(0, 8);
 
