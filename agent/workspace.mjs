@@ -114,7 +114,13 @@ export async function publishSpec({ dir, project, branch, specPath, issueKey, su
   const gh = githubRepo(project.automationRepoUrl);
   if (!process.env.GITHUB_TOKEN || !gh) return { pushed: false, prUrl: null };
 
-  await git(...gitAuthArgs(project.automationRepoUrl), 'push', '--force-with-lease', '-u', 'origin', branch);
+  // The branch is rebuilt from the default branch on every run, so a branch left by an earlier
+  // run is replaced. Only the default branch is fetched, so look up the branch's current commit
+  // for the lease; without it the push is rejected as "stale info".
+  const auth = gitAuthArgs(project.automationRepoUrl);
+  const remoteHead = await git(...auth, 'ls-remote', 'origin', `refs/heads/${branch}`);
+  const leaseSha = remoteHead.stdout.trim().split(/\s+/)[0] || '';
+  await git(...auth, 'push', `--force-with-lease=refs/heads/${branch}:${leaseSha}`, '-u', 'origin', branch);
 
   const headers = {
     Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,

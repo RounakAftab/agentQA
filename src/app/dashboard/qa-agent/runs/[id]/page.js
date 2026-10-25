@@ -77,11 +77,15 @@ function RunDetail({ params }) {
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, []);
-  const logEndRef = useRef(null);
+  const logRef = useRef(null);
+  const logAtBottomRef = useRef(true);
   const eventCount = run?.events.length ?? 0;
 
+  // Follow new lines inside the log box only (never the page), and only while the user has not
+  // scrolled up in the box to read earlier lines.
   useEffect(() => {
-    if (eventCount && logEndRef.current) logEndRef.current.scrollIntoView({ block: 'nearest' });
+    const log = logRef.current;
+    if (eventCount && log && logAtBottomRef.current) log.scrollTop = log.scrollHeight;
   }, [eventCount]);
 
   if (!loaded) {
@@ -301,7 +305,14 @@ function RunDetail({ params }) {
           {run.events.length === 0 ? (
             <p className={styles.empty}>Nothing logged yet.</p>
           ) : (
-            <div className={styles.log}>
+            <div
+              ref={logRef}
+              className={styles.log}
+              onScroll={(ev) => {
+                const el = ev.currentTarget;
+                logAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+              }}
+            >
               {run.events.map((e) => (
                 <div key={e.id} className={`${styles.logLine} ${styles[`log_${e.level}`] ?? ''}`}>
                   <span className={styles.logTime}>{formatTime(e.at)}</span>
@@ -309,7 +320,6 @@ function RunDetail({ params }) {
                   <span className={styles.logMessage}>{e.message}</span>
                 </div>
               ))}
-              <div ref={logEndRef} />
             </div>
           )}
         </section>
