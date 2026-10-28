@@ -21,8 +21,21 @@ function collectFailures(suites, out = []) {
   return out;
 }
 
-// Resolves { passed, stats, failures, output }. `passed` requires at least one test and
-// no unexpected or flaky results.
+// Problems on the worker's computer that no change to the spec can fix.
+function setupProblem(text) {
+  const busy = text.match(/(\S+) is already used, make sure that nothing is running on the port/);
+  if (busy) {
+    return (
+      `The test repository's playwright.config starts its own server (webServer) on ${busy[1]}, but another ` +
+      `program on the worker's computer already uses that port (for example the AgentQA dashboard on port 3000). ` +
+      `Move the test repository's server and baseURL to a free port, or stop the program using it, then run again.`
+    );
+  }
+  return null;
+}
+
+// Resolves { passed, stats, failures, output, setupError }. `passed` requires at least one test and
+// no unexpected or flaky results. `setupError` explains a failure the spec can't cause or fix.
 export async function runSpec({ workspace, specPath, env, signal }) {
   const reportFile = path.join(workspace, '.agentqa', `report-${Date.now()}.json`);
   await fs.mkdir(path.dirname(reportFile), { recursive: true });
@@ -44,7 +57,7 @@ export async function runSpec({ workspace, specPath, env, signal }) {
 
   const output = stripAnsi(`${result.stdout}\n${result.stderr}`).trim().slice(-6000);
   if (!report) {
-    return { passed: false, stats: null, failures: [{ title: 'Playwright', status: 'error', error: output || `exit ${result.code}` }], output };
+    return { passed: false, stats: null, failures: [{ title: 'Playwright', status: 'error', error: output || `exit ${result.code}` }], output, setupError: setupProblem(output) };
   }
 
   const stats = {
@@ -58,5 +71,6 @@ export async function runSpec({ workspace, specPath, env, signal }) {
   for (const e of report.errors ?? []) failures.push({ title: 'Load error', status: 'error', error: stripAnsi(e.message).slice(0, 4000) });
 
   const passed = result.code === 0 && stats.expected > 0 && stats.unexpected === 0 && stats.flaky === 0 && failures.length === 0;
-  return { passed, stats, failures, output };
+  const setupError = passed ? null : setupProblem(failures.map((f) => f.error).join('\n') + '\n' + output);
+  return { passed, stats, failures, output, setupError };
 }

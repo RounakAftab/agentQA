@@ -174,6 +174,9 @@ async function runSession({ mode, workspace, project, issue, specPath, testEnv, 
           await ctx.countTestRun(testRunsSoFar + testRuns);
           lastResult = await runSpec({ workspace, specPath, env: testEnv, signal: abortController.signal });
           await ctx.log(tag, lastResult.passed ? 'success' : 'warn', lastResult.passed ? `Test run ${testRuns} passed` : `Test run ${testRuns} failed`);
+          if (lastResult.setupError) {
+            return { ...text(`The test could not start because of the worker's setup, not the spec: ${lastResult.setupError} Do not change the spec for this. Stop and report it.`), isError: true };
+          }
           return text(
             lastResult.passed
               ? { passed: true, stats: lastResult.stats }

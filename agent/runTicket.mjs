@@ -160,6 +160,8 @@ export async function runTicket({ db, run, abortController }) {
       if (errors.length > 0) return { problem: `Spec breaks the rules: ${errors.join(' ')}`, draft: content };
       const verification = await runSpec({ workspace, specPath, env: testEnv, signal: abortController.signal });
       checkCancelled();
+      // Healing can't fix the worker's setup, so stop here with the reason.
+      if (verification.setupError) throw new Error(verification.setupError);
       if (!verification.passed) {
         const first = verification.failures[0];
         return {
