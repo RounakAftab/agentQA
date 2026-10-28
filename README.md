@@ -105,6 +105,34 @@ added are WIN1252 on Windows. The worker refuses to start on one and explains ho
 
 Admins, QA Leads and QA Engineers can start and cancel runs. Developers can view them.
 
+## Codegen
+
+The **Codegen** menu turns a recorded flow on any site into Playwright tests. It needs no project
+or Jira:
+
+1. Enter the site URL and click **Start recording**. The worker (`npm run agent:worker`) opens
+   Playwright's recorder in a browser **on the computer it runs on**; the page names that computer.
+   Use the site; the recorded steps appear in AgentQA as you go. Close the browser when done and the
+   script opens in the editor. Recordings close after 30 minutes. Without a worker, run
+   `npx playwright codegen <url>` yourself and paste the code instead.
+2. Passwords, and the username typed next to them, are replaced with
+   `process.env.E2E_PASSWORD` / `E2E_USERNAME` before anything is saved.
+3. Switch between **Plain spec** and **Page Object Model**. Pages are named from their URLs; rename
+   them, start a new page at any step, or leave steps out. Consecutive actions become methods
+   (`loginPage.login(username, password)`), and repeated flows reuse one method.
+4. **Run test** runs the Page Object Model or plain spec on the worker (tick **Show browser** to
+   watch it there). The **Tests** tab lists every action and check with its code line, error and a
+   screenshot on failure; **Console** streams Playwright's output; **History** keeps the last runs.
+   Flows that log in need **Set test login** (stored encrypted; the password is masked in results).
+5. When a run fails, **Heal test** gives it to the QA Agent healer: it inspects the live site, fixes
+   the recorded steps (locators, waits) in codegen style and runs them again. **Apply fix** replaces
+   the recording and keeps your page names. Healing uses the agent model (`AGENT_MODEL`, capped by
+   `AGENT_MAX_BUDGET_USD`).
+6. **Download ZIP** gives a project that runs with `npm install && npx playwright test`.
+
+The converter lives in `src/lib/codegen` and is covered by `npm test`. Admins, QA Leads and QA
+Engineers create and edit scripts. Developers can view and download them.
+
 ## Deploy
 
 See [DEPLOY.md](DEPLOY.md) for a free setup on Vercel + Neon.

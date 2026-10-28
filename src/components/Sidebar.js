@@ -16,6 +16,7 @@ import {
   LogOut,
   HelpCircle,
   Bot,
+  Code2,
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', id: 'nav-dashboard' },
   { href: '/dashboard/projects', icon: FolderKanban, label: 'Projects', id: 'nav-projects' },
   { href: '/dashboard/qa-agent', icon: Bot, label: 'QA Agent', id: 'nav-qa-agent' },
+  { href: '/dashboard/codegen', icon: Code2, label: 'Codegen', id: 'nav-codegen' },
   { href: '/dashboard/approvals', icon: CheckSquare, label: 'Approvals', id: 'nav-approvals' },
   { href: '/dashboard/ci-results', icon: Activity, label: 'CI Results', id: 'nav-ci' },
   { href: '/dashboard/audit', icon: ScrollText, label: 'Audit Trail', id: 'nav-audit' },

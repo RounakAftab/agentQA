@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { run, runOrThrow, redact } from './processes.mjs';
 
-const ROOT = path.resolve(process.env.AGENT_WORKSPACE_DIR || '.agent-workspaces');
+export const ROOT = path.resolve(process.env.AGENT_WORKSPACE_DIR || '.agent-workspaces');
 
 function githubRepo(repoUrl) {
   const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(repoUrl);
@@ -22,7 +22,7 @@ export function gitAuthArgs(repoUrl) {
 const exists = (p) => fs.access(p).then(() => true, () => false);
 
 // Version used for blank test projects (projects without a test repository).
-const PLAYWRIGHT_TEST_VERSION = '1.64.1';
+export const PLAYWRIGHT_TEST_VERSION = '1.64.1';
 
 const BLANK_CONFIG = `import { defineConfig } from '@playwright/test';
 
@@ -51,7 +51,7 @@ async function prepareBlankProject(project, log) {
 }
 
 // Installs npm dependencies once, then the browser build that project's Playwright expects.
-async function installDependencies(dir, log) {
+export async function installDependencies(dir, log) {
   if (!(await exists(path.join(dir, 'package.json')))) return;
   if (await exists(path.join(dir, 'node_modules'))) return;
   const hasLock = await exists(path.join(dir, 'package-lock.json'));

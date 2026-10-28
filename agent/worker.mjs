@@ -7,6 +7,8 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { runTicket, CancelledError } from './runTicket.mjs';
+import { recordingLoop } from './recorder.mjs';
+import { codegenRunLoop } from './codegenRunner.mjs';
 import { redact } from './processes.mjs';
 
 // A slow connection to a cloud database can take longer than Prisma's 10 s pool timeout.
@@ -145,6 +147,10 @@ async function main() {
   console.log(ONCE ? `[worker] ${WORKER_ID} working through the queue` : `[worker] ${WORKER_ID} waiting for runs (Ctrl+C to stop)`);
   await heartbeat();
   const beat = setInterval(() => heartbeat().catch((e) => console.error('[worker] heartbeat:', e.message)), HEARTBEAT_MS);
+  // Codegen recordings open a visible browser and runs are started by someone waiting in the
+  // editor, so only a long-running worker on someone's computer takes them, never the CI runner.
+  const recorder = ONCE ? null : recordingLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
+  const codegenRuns = ONCE ? null : codegenRunLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
 
   while (!stopping) {
     try {
@@ -164,6 +170,7 @@ async function main() {
   }
 
   clearInterval(beat);
+  await Promise.all([recorder, codegenRuns]);
   await db.agentWorker.delete({ where: { id: WORKER_ID } }).catch(() => {});
   await db.$disconnect();
   if (ONCE) console.log('[worker] Queue is empty, exiting');

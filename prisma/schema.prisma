@@ -60,14 +60,17 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  projects       ProjectMember[]
-  approvals      Approval[]      @relation("AssignedApprovals")
-  approvedItems  Approval[]      @relation("ApprovedBy")
-  auditEvents    AuditEvent[]
-  comments       Comment[]
-  passwordTokens PasswordToken[]
-  agentRuns      AgentRun[]
-  requirements   Requirement[]
+  projects          ProjectMember[]
+  approvals         Approval[]         @relation("AssignedApprovals")
+  approvedItems     Approval[]         @relation("ApprovedBy")
+  auditEvents       AuditEvent[]
+  comments          Comment[]
+  passwordTokens    PasswordToken[]
+  agentRuns         AgentRun[]
+  requirements      Requirement[]
+  codegenScripts    CodegenScript[]
+  codegenRecordings CodegenRecording[]
+  codegenRuns       CodegenRun[]
 }
 
 model PasswordToken {
@@ -264,11 +267,11 @@ model CIRun {
 }
 
 model CIFailure {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   ciRunId    String
   testName   String
   className  String
-  error      String @db.Text
+  error      String  @db.Text
   duration   Float
   aiAnalysis String? @db.Text // likely cause, from src/lib/playwrightReport.js
 
@@ -347,6 +350,90 @@ model AgentRunEvent {
   run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId, at])
+}
+
+// A Playwright codegen recording, turned into a plain spec or a Page Object Model project by
+// src/lib/codegen. The code is rebuilt from `recording` and `edits` on every view, so improving the
+// converter improves every saved script.
+model CodegenScript {
+  id             String   @id @default(cuid())
+  title          String
+  startUrl       String
+  sourceCode     String   @db.Text // recorder output with typed credentials already replaced
+  recording      Json // { steps, startUrl, preamble, secrets } from parseCodegen()
+  edits          Json     @default("{}") // { removed, pageNames, renames } made in the editor
+  // Test login for runs (E2E_USERNAME / E2E_PASSWORD). The password is encrypted (src/lib/secrets.js).
+  e2eUsername    String?
+  e2ePasswordEnc String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdBy User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  runs      CodegenRun[]
+
+  @@index([updatedAt])
+}
+
+// A test run or heal of a Codegen script, done by the worker (agent/codegenRunner.mjs).
+//   kind "run":  runs the generated code; `console` streams the output, `results` the steps.
+//   kind "heal": the healer fixes the recording after a failed run (`fromRunId`), then runs it;
+//                the fix is kept in `healedSource` until the user applies it.
+//   status: QUEUED -> RUNNING -> PASSED | FAILED | ERROR | CANCELLED
+model CodegenRun {
+  id              String    @id @default(cuid())
+  scriptId        String
+  kind            String    @default("run")
+  style           String    @default("pom") // pom | plain
+  headed          Boolean   @default(false)
+  fromRunId       String?
+  status          String    @default("QUEUED")
+  console         String    @default("") @db.Text
+  results         Json? // { status, duration, tests: [{ title, status, duration, error, steps, screenshot }] }
+  healedSource    String?   @db.Text
+  healSummary     String?   @db.Text
+  appliedAt       DateTime?
+  costUsd         Float?
+  error           String?   @db.Text
+  cancelRequested Boolean   @default(false)
+  workerId        String?
+  hostname        String?
+  requestedById   String?
+  heartbeatAt     DateTime?
+  createdAt       DateTime  @default(now())
+  finishedAt      DateTime?
+
+  script      CodegenScript @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  requestedBy User?         @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([scriptId, createdAt])
+  @@index([status, createdAt])
+}
+
+// A live recording: the worker opens Playwright's recorder on its machine (agent/recorder.mjs),
+// streams the code here while the user works, and finishes when they close the browser. The app
+// then turns the code into a CodegenScript.
+//   QUEUED -> RECORDING -> DONE -> SAVING -> SAVED, or FAILED / CANCELLED
+model CodegenRecording {
+  id              String    @id @default(cuid())
+  title           String
+  startUrl        String
+  status          String    @default("QUEUED")
+  liveCode        String?   @db.Text // recorder output so far, with typed credentials already replaced
+  stepCount       Int       @default(0)
+  error           String?   @db.Text
+  scriptId        String? // the CodegenScript created from it
+  cancelRequested Boolean   @default(false)
+  workerId        String?
+  hostname        String? // the computer the recorder opened on
+  requestedById   String?
+  heartbeatAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  requestedBy User? @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }
 
 // Last time each worker process checked in, so the UI can say whether one is running.

@@ -29,6 +29,13 @@ export function run(command, args, { cwd, env, timeoutMs = 10 * 60_000, signal }
   });
 }
 
+// Ends a child process and everything it started (on Windows a plain kill leaves browsers open).
+export async function killTree(child) {
+  if (!child || child.exitCode !== null) return;
+  if (isWindows) await run('taskkill', ['/pid', String(child.pid), '/T', '/F'], { timeoutMs: 15_000 });
+  else child.kill('SIGTERM');
+}
+
 export async function runOrThrow(command, args, opts) {
   const result = await run(command, args, opts);
   if (result.code !== 0) {
