@@ -1,8 +1,7 @@
 import { db } from '@/lib/db';
 import { json, readJson, recordAudit, requireAgentOperator, requireUser } from '@/lib/apiHelpers';
-import { publicRequirement, requirementInclude } from '@/lib/requirements';
+import { nextManualKey, publicRequirement, requirementColumns, requirementInclude } from '@/lib/requirements';
 import { validateRequirementInput } from '@/lib/validation';
-import { MANUAL_KEY_PREFIX } from '@/lib/agentSteps';
 
 // Requirements written in AgentQA for a project: GET /api/qa-agent/requirements?projectId=...
 // Add &all=1 to include Jira tickets the agent has picked up.
@@ -20,12 +19,8 @@ export async function GET(request) {
   return json({ requirements: rows.map(publicRequirement) });
 }
 
-// Next free REQ-n in the project.
-async function nextKey(projectId) {
-  const rows = await db.requirement.findMany({ where: { projectId, key: { startsWith: `${MANUAL_KEY_PREFIX}-` } }, select: { key: true } });
-  const highest = rows.reduce((max, r) => Math.max(max, Number(r.key.split('-')[1]) || 0), 0);
-  return `${MANUAL_KEY_PREFIX}-${highest + 1}`;
-}
+const duplicateKeyError = (key) =>
+  json({ error: 'Please fix the highlighted fields', fieldErrors: { jiraKey: `${key} is already a requirement in this project` } }, 409);
 
 export async function POST(request) {
   const { user, response } = await requireAgentOperator();
@@ -37,18 +32,20 @@ export async function POST(request) {
 
   const { values, errors } = validateRequirementInput(body);
   if (Object.keys(errors).length > 0) return json({ error: 'Please fix the highlighted fields', fieldErrors: errors }, 400);
+  const data = { ...requirementColumns(values, project), projectId: project.id, source: 'manual', status: 'open', createdById: user.id };
 
-  // Two people adding a requirement at once can pick the same key; the unique index
-  // rejects the second, which then takes the next number.
+  // A Jira key is used as given. Otherwise two people adding a requirement at once can pick the
+  // same REQ-n; the unique index rejects the second, which then takes the next number.
   let created = null;
   for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
     try {
       created = await db.requirement.create({
-        data: { ...values, projectId: project.id, key: await nextKey(project.id), source: 'manual', status: 'open', createdById: user.id },
+        data: { ...data, key: values.jiraKey ?? (await nextManualKey(db, project.id)) },
         include: requirementInclude,
       });
     } catch (err) {
       if (err.code !== 'P2002') throw err;
+      if (values.jiraKey) return duplicateKeyError(values.jiraKey);
     }
   }
   if (!created) return json({ error: 'Could not create the requirement. Try again.' }, 409);

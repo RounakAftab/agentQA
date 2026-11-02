@@ -16,7 +16,10 @@ export function publicRun(run, { withDetail = false } = {}) {
     source: run.source,
     requirementId: run.requirementId,
     skippedSteps: run.skippedSteps ?? [],
-    issueUrl: run.source === 'jira' && run.project?.jiraBaseUrl ? issueUrl(run.project.jiraBaseUrl, run.issueKey) : null,
+    issueUrl:
+      run.source === 'jira'
+        ? run.project?.jiraBaseUrl ? issueUrl(run.project.jiraBaseUrl, run.issueKey) : null
+        : run.issueSnapshot?.url ?? null, // a manual requirement linked to a ticket
     status: run.status,
     step: run.step,
     verifiedPass: run.verifiedPass,

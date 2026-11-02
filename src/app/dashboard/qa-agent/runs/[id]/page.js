@@ -7,6 +7,7 @@ import { useCurrentUser } from '@/lib/teamStore';
 import { formatDateTime, formatDuration, formatTime, getRelativeTime } from '@/lib/format';
 import { AGENT_STEPS, stepLabel } from '@/lib/agentSteps';
 import { useAgentRun, cancelAgentRun, startRunner, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
+import { buildJiraUpdate } from '@/lib/jiraUpdate';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -23,6 +24,9 @@ import {
   Download,
   MinusCircle,
   Play,
+  Copy,
+  Check,
+  Ticket,
 } from 'lucide-react';
 import styles from './page.module.css';
 
@@ -167,7 +171,7 @@ function RunDetail({ params }) {
           <div className={styles.topActions}>
             {run.issueUrl && (
               <a href={run.issueUrl} target="_blank" rel="noopener" className="btn btn-secondary btn-sm">
-                Jira <ExternalLink size={13} />
+                {isJira ? 'Jira' : 'Ticket'} <ExternalLink size={13} />
               </a>
             )}
             {run.prUrl && (
@@ -233,6 +237,8 @@ function RunDetail({ params }) {
             </span>
           </div>
         )}
+
+        {!isJira && (run.status === 'PASSED' || run.status === 'FAILED') && <JiraUpdate run={run} />}
 
         <div className={styles.grid}>
           <section className={`card ${styles.panel}`}>
@@ -325,6 +331,42 @@ function RunDetail({ params }) {
         </section>
       </div>
     </>
+  );
+}
+
+// AgentQA can't update Jira for a requirement written here, so it hands over the text to paste
+// into the ticket: the same note the worker adds when Jira is connected.
+function JiraUpdate({ run }) {
+  const [copied, setCopied] = useState(false);
+  const text = buildJiraUpdate(run, window.location.href);
+  const textRef = useRef(null);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard blocked (e.g. plain http): select the text so Ctrl+C works.
+      textRef.current?.select();
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <section className={`card ${styles.panel} ${styles.jiraUpdate}`} aria-labelledby="jira-update-title">
+      <h3 id="jira-update-title" className={`${styles.panelTitle} ${styles.titleWithHint}`}>
+        <Ticket size={16} /> Update the Jira ticket
+        <button className={`btn btn-primary btn-sm ${styles.titleAction}`} onClick={copy} id="btn-copy-jira-update">
+          {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy Jira update'}
+        </button>
+      </h3>
+      <p className={styles.hint}>
+        Paste this as a comment on {run.issueUrl ? <a href={run.issueUrl} target="_blank" rel="noopener">{run.issueKey}</a> : 'the ticket'}
+        {run.status === 'PASSED' ? ', then move the ticket to Done.' : '. Leave the ticket In Progress.'}
+      </p>
+      <textarea ref={textRef} className={`input ${styles.jiraText}`} value={text} readOnly rows={Math.min(12, text.split('\n').length + 1)} aria-label="Jira update text" />
+    </section>
   );
 }
 

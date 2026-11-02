@@ -86,7 +86,7 @@ export async function runTicket({ db, run, abortController }) {
       description: requirement.description ?? '',
       type: 'Requirement',
       priority: requirement.priority,
-      url: null,
+      url: requirement.sourceUrl, // the Jira ticket it was copied from, if the user linked one
     };
     await setRequirementStatus('in_progress');
     await log('jira.read', 'success', `${issue.key}: ${issue.summary}`);

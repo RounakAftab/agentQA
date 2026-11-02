@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --no-warnings --test \"src/lib/codegen/*.test.mjs\"",
+    "test": "node --no-warnings --test \"src/lib/codegen/*.test.mjs\" \"src/lib/*.test.mjs\"",
     "db:start": "node scripts/db.mjs",
     "db:migrate": "prisma migrate dev",
     "db:seed": "node --no-warnings --env-file=.env prisma/seed.mjs",

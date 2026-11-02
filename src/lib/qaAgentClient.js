@@ -107,7 +107,9 @@ export const startAgentRun = ({ projectId, issueKey, summary, requirementId }) =
   send('POST', '/api/qa-agent/runs', { projectId, issueKey, summary, requirementId });
 export const createRequirement = (projectId, form) => send('POST', '/api/qa-agent/requirements', { ...form, projectId });
 export const updateRequirement = (id, form) => send('PATCH', `/api/qa-agent/requirements/${encodeURIComponent(id)}`, form);
-export const deleteRequirement = (id) => send('DELETE', `/api/qa-agent/requirements/${encodeURIComponent(id)}`);
+export const importRequirements = (projectId, { site, issues }) =>
+  send('POST', '/api/qa-agent/requirements/import', { projectId, site, issues });
+export const deleteRequirement =(id) => send('DELETE', `/api/qa-agent/requirements/${encodeURIComponent(id)}`);
 export const cancelAgentRun = (id) => send('DELETE', `/api/qa-agent/runs/${encodeURIComponent(id)}`);
 export const startRunner = (id) => send('POST', `/api/qa-agent/runs/${encodeURIComponent(id)}`);
 

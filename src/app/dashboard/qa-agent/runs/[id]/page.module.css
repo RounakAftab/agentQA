@@ -293,3 +293,19 @@
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
+
+/* Text to paste into Jira for a requirement written in AgentQA */
+.jiraUpdate .hint a {
+  color: var(--primary-600);
+  font-weight: 600;
+}
+
+.jiraText {
+  width: 100%;
+  margin-top: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  resize: vertical;
+  background: var(--slate-50);
+}

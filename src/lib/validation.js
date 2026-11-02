@@ -1,6 +1,6 @@
 // Validation shared by the forms (instant feedback) and the API (the real enforcement).
 import { ROLES } from './roles.js';
-import { PROJECT_KEY_PATTERN } from './agentSteps.js';
+import { ISSUE_KEY_PATTERN, MANUAL_KEY_PREFIX, PROJECT_KEY_PATTERN } from './agentSteps.js';
 
 // Local part: common RFC 5322 characters. Domain: dot-separated labels, TLD of 2+ letters.
 const EMAIL_PATTERN =
@@ -149,6 +149,18 @@ export function validateRequirementInput(input) {
 
   const priority = String(input.priority ?? 'medium').toLowerCase();
   values.priority = REQUIREMENT_PRIORITIES.includes(priority) ? priority : 'medium';
+
+  // Optional link to a Jira ticket the user copied this from (no Jira connection needed). The key
+  // becomes the requirement's key, so the spec and branch are named after the ticket.
+  const jiraKey = String(input.jiraKey ?? '').trim().toUpperCase();
+  if (!jiraKey) values.jiraKey = null;
+  else if (!ISSUE_KEY_PATTERN.test(jiraKey)) errors.jiraKey = 'Use a Jira ticket key such as SCRUM-12';
+  else if (jiraKey.startsWith(`${MANUAL_KEY_PREFIX}-`)) errors.jiraKey = `${MANUAL_KEY_PREFIX}- keys are AgentQA's own numbers. Leave this empty to get one.`;
+  else values.jiraKey = jiraKey;
+
+  const ticketUrl = validateUrl(input.ticketUrl, { required: false, label: 'Ticket link', example: 'https://your-team.atlassian.net/browse/SCRUM-12' });
+  if (ticketUrl.error) errors.ticketUrl = ticketUrl.error;
+  else values.ticketUrl = ticketUrl.value || null;
   return { values, errors };
 }
 

@@ -96,8 +96,19 @@
   font-size: var(--text-sm);
 }
 
+.ticketRow {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 6px var(--space-3);
+}
+
+.ticketRow > :last-child {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 560px) {
-  .row {
+  .row,
+  .ticketRow {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -77,6 +77,23 @@ comment. These rules are checked in code, not just in the prompt: role-based sel
 XPath, no credentials in test files, one `test.step()` per Jira step and one `expect()` per
 acceptance criterion. A spec that breaks a rule is rejected.
 
+**Jira tickets without a Jira connection**
+
+If you can't connect Jira (no API token, or third-party apps aren't allowed), tickets still work
+as requirements. AgentQA never contacts Jira for them:
+
+- **One ticket:** in **New requirement**, paste the ticket's text and fill in **Jira ticket**
+  (`SCRUM-12`) and optionally its link. The requirement, spec (`scrum_12.spec.ts`) and branch are
+  named after the ticket.
+- **Many tickets:** in Jira, filter the tickets and use **Export → Export CSV (all fields)**, which
+  any Jira user can do. Then use **Import from Jira CSV** on the Requirements tab. Each ticket keeps
+  its key, summary, description and priority, and an *Acceptance Criteria* field is added to the
+  description. Tickets already in the project are skipped, never overwritten. A ticket needs at
+  least 20 characters of description. The limit is 200 tickets per file.
+- **Back to Jira:** when the run finishes, the run page has **Copy Jira update**. It copies the
+  `✅ Automation test created` note, the checks and the links (or the failure reason) to paste as a
+  comment on the ticket. Then move the ticket yourself.
+
 **Setup**
 
 1. Open **Projects → Edit project**:

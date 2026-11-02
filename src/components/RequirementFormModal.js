@@ -26,6 +26,8 @@ export default function RequirementFormModal({ projectId, requirement, onClose, 
     title: requirement?.title ?? '',
     description: requirement?.description ?? '',
     priority: requirement?.priority ?? 'medium',
+    jiraKey: requirement?.jiraKey ?? '',
+    ticketUrl: requirement?.ticketUrl ?? '',
   }));
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
@@ -35,6 +37,21 @@ export default function RequirementFormModal({ projectId, requirement, onClose, 
   const set = (key) => (e) => {
     setForm({ ...form, [key]: e.target.value });
     if (errors[key]) setErrors({ ...errors, [key]: undefined });
+  };
+
+  // A pasted ticket link fills in the key; a new key updates a link that pointed at the old one.
+  const setTicketUrl = (e) => {
+    const ticketUrl = e.target.value;
+    const fromLink = ticketUrl.match(/\/browse\/([A-Z][A-Z0-9_]*-\d+)/i)?.[1]?.toUpperCase();
+    setForm({ ...form, ticketUrl, jiraKey: form.jiraKey || fromLink || '' });
+    setErrors({ ...errors, ticketUrl: undefined, jiraKey: undefined });
+  };
+  const setJiraKey = (e) => {
+    const jiraKey = e.target.value.toUpperCase();
+    const oldKey = form.jiraKey;
+    const ticketUrl = oldKey && form.ticketUrl.endsWith(`/browse/${oldKey}`) && jiraKey ? form.ticketUrl.slice(0, -oldKey.length) + jiraKey : form.ticketUrl;
+    setForm({ ...form, jiraKey, ticketUrl });
+    if (errors.jiraKey) setErrors({ ...errors, jiraKey: undefined });
   };
 
   const close = () => {
@@ -122,6 +139,41 @@ export default function RequirementFormModal({ projectId, requirement, onClose, 
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className={styles.ticketRow}>
+              <div className={styles.group}>
+                <label className={styles.label} htmlFor="requirement-jira-key">Jira ticket</label>
+                <input
+                  id="requirement-jira-key"
+                  className="input"
+                  value={form.jiraKey}
+                  onChange={setJiraKey}
+                  maxLength={20}
+                  placeholder="SCRUM-12"
+                  aria-invalid={Boolean(errors.jiraKey)}
+                  aria-describedby="requirement-ticket-hint"
+                />
+              </div>
+              <div className={styles.group}>
+                <label className={styles.label} htmlFor="requirement-ticket-url">Ticket link</label>
+                <input
+                  id="requirement-ticket-url"
+                  className="input"
+                  type="url"
+                  value={form.ticketUrl}
+                  onChange={setTicketUrl}
+                  maxLength={300}
+                  placeholder="https://your-team.atlassian.net/browse/SCRUM-12"
+                  aria-invalid={Boolean(errors.ticketUrl)}
+                  aria-describedby="requirement-ticket-hint"
+                />
+              </div>
+              <span id="requirement-ticket-hint" className={errors.jiraKey || errors.ticketUrl ? styles.error : styles.hint}>
+                {errors.jiraKey ||
+                  errors.ticketUrl ||
+                  'Optional. If you copied this from Jira, the test file and branch are named after the ticket, e.g. scrum_12.spec.ts. Jira is not changed.'}
+              </span>
             </div>
 
             <div className={styles.group}>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import ProjectFormModal from '@/components/ProjectFormModal';
 import RequirementFormModal from '@/components/RequirementFormModal';
+import JiraImportModal from '@/components/JiraImportModal';
 import { useProjects, refreshProjects } from '@/lib/dataStores';
 import { useCurrentUser } from '@/lib/teamStore';
 import { getRelativeTime } from '@/lib/format';
@@ -42,6 +43,7 @@ import {
   ChevronDown,
   ListChecks,
   FolderKanban,
+  Upload,
 } from 'lucide-react';
 import styles from './page.module.css';
 
@@ -72,6 +74,7 @@ export default function QaAgentPage() {
   const [editingSection, setEditingSection] = useState(null);
   const [requirementForm, setRequirementForm] = useState(null); // { requirement? }
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const project = projects.find((p) => p.id === projectId) ?? projects.find((p) => p.jiraConnected) ?? projects[0] ?? null;
   const jiraConnected = Boolean(project?.jiraConnected);
@@ -235,11 +238,16 @@ export default function QaAgentPage() {
             {activeTab === 'manual' && (
               <div role="tabpanel" aria-labelledby="tab-manual">
                 <div className={styles.panelHeader}>
-                  <p className={styles.panelIntro}>Write or paste what to test. No Jira or GitHub needed.</p>
+                  <p className={styles.panelIntro}>Write or paste what to test, or import a Jira CSV export. No Jira connection needed.</p>
                   {canOperate && project && (
-                    <button className="btn btn-primary btn-sm" onClick={() => setRequirementForm({})} id="btn-new-requirement">
-                      <Plus size={14} /> New requirement
-                    </button>
+                    <div className={styles.headerActions}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setImporting(true)} id="btn-import-jira">
+                        <Upload size={14} /> Import from Jira CSV
+                      </button>
+                      <button className="btn btn-primary btn-sm" onClick={() => setRequirementForm({})} id="btn-new-requirement">
+                        <Plus size={14} /> New requirement
+                      </button>
+                    </div>
                   )}
                 </div>
                 {!project ? null : !requirementsLoaded ? (
@@ -266,7 +274,13 @@ export default function QaAgentPage() {
                         <li key={req.id} className={styles.issue}>
                           <div className={styles.issueMain}>
                             <div className={styles.issueTop}>
-                              <span className={styles.issueKey}>{req.key}</span>
+                              {req.ticketUrl ? (
+                                <a href={req.ticketUrl} target="_blank" rel="noopener" className={styles.issueKey} title="Open the ticket">
+                                  {req.key} <ExternalLink size={11} />
+                                </a>
+                              ) : (
+                                <span className={styles.issueKey}>{req.key}</span>
+                              )}
                               <span className={`badge badge-${status.color}`}>{status.label}</span>
                               <span className={`badge badge-${PRIORITY_COLOR[req.priority] ?? 'neutral'}`}>{req.priority}</span>
                             </div>
@@ -464,6 +478,23 @@ export default function QaAgentPage() {
             setRequirementForm(null);
             setTab('manual');
             setNotice({ type: 'success', text: requirementForm.requirement ? `Saved ${saved.key}` : `Added ${saved.key}. Run it when you are ready.` });
+            refreshRequirements();
+          }}
+        />
+      )}
+
+      {importing && project && (
+        <JiraImportModal
+          project={project}
+          existingKeys={new Set(requirements.map((r) => r.key))}
+          onClose={() => setImporting(false)}
+          onImported={({ created, skipped }) => {
+            setImporting(false);
+            setTab('manual');
+            const skippedText = skipped.length
+              ? ` Skipped ${skipped.length}: ${skipped.slice(0, 5).map((s) => `${s.key} (${s.reason.charAt(0).toLowerCase()}${s.reason.slice(1)})`).join(', ')}${skipped.length > 5 ? ', …' : ''}.`
+              : '';
+            setNotice({ type: created > 0 ? 'success' : 'danger', text: `Imported ${created} ticket(s).${skippedText}` });
             refreshRequirements();
           }}
         />
