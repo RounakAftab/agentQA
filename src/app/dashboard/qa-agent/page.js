@@ -238,7 +238,7 @@ export default function QaAgentPage() {
             {activeTab === 'manual' && (
               <div role="tabpanel" aria-labelledby="tab-manual">
                 <div className={styles.panelHeader}>
-                  <p className={styles.panelIntro}>Write or paste what to test, or import a Jira CSV export. No Jira connection needed.</p>
+                  <p className={styles.panelIntro}>Write what to test, or import tickets from a Jira CSV export.</p>
                   {canOperate && project && (
                     <div className={styles.headerActions}>
                       <button className="btn btn-secondary btn-sm" onClick={() => setImporting(true)} id="btn-import-jira">
