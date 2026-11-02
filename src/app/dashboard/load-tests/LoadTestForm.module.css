@@ -1,0 +1,135 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.row3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.static {
+  font-size: var(--text-sm);
+  color: var(--slate-700);
+  padding: var(--space-2) 0;
+}
+
+.request {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.request :global(.input) {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.method {
+  flex: 0 0 100px;
+  border: none !important;
+  border-right: 1px solid var(--slate-200) !important;
+  border-radius: 0 !important;
+  font-weight: 600;
+}
+
+.base {
+  padding-left: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--slate-400);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--slate-500);
+  line-height: 1.5;
+}
+
+.limitsHint {
+  padding-top: 1.6rem;
+}
+
+.fieldError {
+  font-size: var(--text-xs);
+  color: var(--danger-600);
+}
+
+.advanced {
+  border-top: 1px solid var(--slate-100);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--slate-600);
+  margin-bottom: var(--space-3);
+}
+
+.code {
+  min-height: 90px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--slate-600);
+  margin-bottom: var(--space-3);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+@media (max-width: 760px) {
+  .row,
+  .row3 {
+    grid-template-columns: 1fr;
+  }
+
+  .limitsHint {
+    padding-top: 0;
+  }
+
+  .base {
+    display: none;
+  }
+}

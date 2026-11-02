@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 // Client calls for the Codegen pages.
 
-async function request(method, url, body) {
+export async function request(method, url, body) {
   try {
     const res = await fetch(url, {
       method,
@@ -18,7 +18,7 @@ async function request(method, url, body) {
   }
 }
 
-function useLoad(url, pick) {
+export function useLoad(url, pick) {
   const [state, setState] = useState({ value: null, loaded: false, error: '' });
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
@@ -52,7 +52,7 @@ export function useCodegenScript(id) {
 }
 
 // Polls `url` every `intervalMs` (null = stop) and returns the latest response body.
-function usePoll(url, intervalMs) {
+export function usePoll(url, intervalMs) {
   const [data, setData] = useState(null);
   useEffect(() => {
     if (!url) return undefined;

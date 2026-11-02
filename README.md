@@ -133,6 +133,27 @@ or Jira:
 The converter lives in `src/lib/codegen` and is covered by `npm test`. Admins, QA Leads and QA
 Engineers create and edit scripts. Developers can view and download them.
 
+## Load Tests
+
+The **Load Tests** menu runs k6 against one endpoint of a project's app and shows how it holds up:
+
+1. Install [k6](https://grafana.com/docs/k6/latest/set-up/install-k6/) on the worker computer
+   (Windows: `winget install k6 --source winget`, macOS: `brew install k6`), or set `K6_PATH`.
+2. Set the project's app link (**Projects → Edit project → Test environment**). Load tests can only
+   target that site (same scheme, host and port), and redirects are not followed.
+3. Click **New load test**: choose the request (method, path, optional headers and body), the
+   number of virtual users, the ramp-up and how long to hold full load, and the pass/fail limits
+   (p95 response time, share of failed requests). Headers are stored encrypted.
+4. **Run load test** queues it for the worker (`npm run agent:worker`). The page shows requests per
+   second, response times and errors live, then k6's final numbers and whether each limit held.
+   **Stop** ends the run early and keeps the numbers so far.
+
+Limits: `LOAD_MAX_VUS` (default 100) and `LOAD_MAX_DURATION_SEC` (ramp-up plus duration, default
+600). The app checks them when a test is saved or started, and the worker checks them again with
+its own values. Load tests run only on a worker someone keeps running, never on the GitHub Actions
+runner, and the load comes from that computer's network. Admins, QA Leads and QA Engineers create
+and run load tests. Developers can view them.
+
 ## Deploy
 
 See [DEPLOY.md](DEPLOY.md) for a free setup on Vercel + Neon.

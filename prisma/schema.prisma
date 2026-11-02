@@ -71,6 +71,8 @@ model User {
   codegenScripts    CodegenScript[]
   codegenRecordings CodegenRecording[]
   codegenRuns       CodegenRun[]
+  loadTests         LoadTest[]
+  loadRuns          LoadRun[]
 }
 
 model PasswordToken {
@@ -120,6 +122,7 @@ model Project {
   ciRuns       CIRun[]
   auditEvents  AuditEvent[]
   agentRuns    AgentRun[]
+  loadTests    LoadTest[]
 }
 
 model ProjectMember {
@@ -433,6 +436,62 @@ model CodegenRecording {
 
   requestedBy User? @relation(fields: [requestedById], references: [id], onDelete: SetNull)
 
+  @@index([status, createdAt])
+}
+
+// A k6 load test of one endpoint of a project's app. The URL must stay on the project's
+// Test environment (appBaseUrl), checked by the app when saved and by the worker before each run.
+model LoadTest {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  method          String   @default("GET")
+  url             String
+  body            String?  @db.Text
+  // Request headers can carry tokens, so they are stored encrypted (src/lib/secrets.js) as JSON
+  // [{ name, value }]; only the names are sent to the browser.
+  headersEnc      String?  @db.Text
+  headerNames     String[] @default([])
+  vus             Int      @default(10) // virtual users at full load
+  rampUpSec       Int      @default(30)
+  durationSec     Int      @default(60) // time at full load, after the ramp-up
+  maxP95Ms        Int? // pass/fail limits; null = not checked
+  maxErrorRatePct Float?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  runs      LoadRun[]
+
+  @@index([projectId, updatedAt])
+}
+
+// One run of a LoadTest by the worker (agent/loadRunner.mjs).
+//   status: QUEUED -> RUNNING -> PASSED | FAILED (a limit was crossed) | ERROR | CANCELLED
+model LoadRun {
+  id              String    @id @default(cuid())
+  testId          String
+  status          String    @default("QUEUED")
+  config          Json // the test's method, URL, load shape and limits when the run was queued
+  samples         Json      @default("[]") // [{ t, vus, rps, avgMs, p95Ms, errorPct }] every few seconds
+  summary         Json? // k6's end-of-test numbers, see summarize() in agent/loadRunner.mjs
+  console         String    @default("") @db.Text
+  error           String?   @db.Text
+  cancelRequested Boolean   @default(false)
+  workerId        String?
+  hostname        String?
+  requestedById   String?
+  heartbeatAt     DateTime?
+  createdAt       DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  test        LoadTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  requestedBy User?    @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([testId, createdAt])
   @@index([status, createdAt])
 }
 
