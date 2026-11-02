@@ -80,8 +80,19 @@
   transform: rotate(180deg);
 }
 
-.collapsed .collapseBtn {
+/* Collapsed, the bar is too narrow for the logo and the button: the button takes the logo's place,
+   pointing right, so the sidebar can always be expanded again. */
+.collapsed .logoSection {
+  justify-content: center;
+}
+
+.collapsed .logo {
   display: none;
+}
+
+.collapsed .collapseBtn {
+  width: 36px;
+  height: 36px;
 }
 
 /* Navigation */

@@ -56,6 +56,8 @@ export default function Sidebar({ collapsed, onToggle }) {
           className={styles.collapseBtn}
           onClick={onToggle}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
           id="sidebar-toggle"
         >
           <ChevronLeft size={16} className={collapsed ? styles.rotated : ''} />
