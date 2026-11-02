@@ -10,8 +10,9 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { decryptSecret } from '../src/lib/secrets.js';
-import { limitProblem, loadLimits, targetProblem } from '../src/lib/loadLimits.js';
+import { limitProblem, loadLimits, originOf, targetProblem } from '../src/lib/loadLimits.js';
 import { killTree, redact, run as runCommand } from './processes.mjs';
+import { outageTracker, saveResult } from './dbRetry.mjs';
 import { ROOT } from './workspace.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -48,7 +49,9 @@ async function claim(db, workerId) {
 function liveRun(db, id) {
   let consoleText = '';
   const samples = [];
+  let stepStats = null;
   let dirty = false;
+  const outage = outageTracker('load');
   return {
     append(text) {
       consoleText += text;
@@ -59,26 +62,46 @@ function liveRun(db, id) {
       samples.push(point);
       dirty = true;
     },
-    // Resolves true when the run should stop: a user asked, or the test was deleted.
+    setStepStats(stats) {
+      stepStats = stats;
+      dirty = true;
+    },
+    // Resolves true when the run should stop (a user asked, or the test was deleted), false to go
+    // on, or null when the database could not be reached: what was not written is kept for the next
+    // flush. Throws once the database has been unreachable for a minute (see dbRetry.mjs).
     async flush(extra = {}) {
       const data = { heartbeatAt: new Date(), ...extra };
-      if (dirty) Object.assign(data, { console: consoleText, samples });
+      const wasDirty = dirty;
+      if (dirty) Object.assign(data, { console: consoleText, samples }, stepStats ? { stepStats } : {});
       dirty = false;
       try {
         const row = await db.loadRun.update({ where: { id }, data, select: { cancelRequested: true } });
+        outage.ok();
         return row.cancelRequested;
       } catch (err) {
         if (err.code === 'P2025') return true;
-        throw err;
+        dirty ||= wasDirty;
+        outage.failed(err);
+        return null;
       }
     },
   };
 }
 
-function k6Options(config) {
+// The steps the k6 script runs. A single request is a scenario of one step.
+function stepsOf(config, test) {
+  if (config.kind === 'scenario') return config.steps;
+  const origin = originOf(config.url);
+  return [{ name: 'Request', method: config.method, path: config.url.slice(origin.length) || '/', headers: [], body: test.body ?? null, expectStatus: null, extract: [], thinkTimeSec: 0, maxP95Ms: null }];
+}
+
+function k6Options(config, steps) {
   const thresholds = {};
   if (config.maxP95Ms != null) thresholds.http_req_duration = [`p(95)<${config.maxP95Ms}`];
   if (config.maxErrorRatePct != null) thresholds.http_req_failed = [`rate<=${config.maxErrorRatePct / 100}`];
+  steps.forEach((step, i) => {
+    if (step.maxP95Ms != null) thresholds[`step_${i}_duration`] = [`p(95)<${step.maxP95Ms}`];
+  });
   return {
     scenarios: {
       load: {
@@ -158,12 +181,31 @@ function sampler(started) {
   };
 }
 
+// Each step's numbers so far, from k6's running totals (live) or its summary (at the end).
+function stepNumbers(steps, read) {
+  return steps.map((step, i) => {
+    const duration = read(`step_${i}_duration`) ?? {};
+    const failed = read(`step_${i}_failed`) ?? {};
+    return {
+      name: step.name,
+      requests: read(`step_${i}_requests`)?.count ?? 0,
+      avgMs: round(duration.avg),
+      p95Ms: round(duration['p(95)']),
+      failedPct: failed.rate == null ? null : round(failed.rate * 100, 2),
+      maxP95Ms: step.maxP95Ms ?? null,
+    };
+  });
+}
+
 // The numbers the dashboard keeps from k6's end-of-test summary.
-function summarize(data) {
+function summarize(data, steps) {
   const m = data.metrics ?? {};
   const duration = m.http_req_duration?.values ?? {};
   const failed = m.http_req_failed?.values ?? {};
+  const flow = m.flow_duration?.values ?? {};
   return {
+    steps: stepNumbers(steps, (id) => m[id]?.values),
+    flows: { completed: m.flows_completed?.values?.count ?? 0, avgMs: round(flow.avg), p95Ms: round(flow['p(95)']) },
     requests: m.http_reqs?.values?.count ?? 0,
     rps: round(m.http_reqs?.values?.rate ?? 0),
     failedRequests: failed.passes ?? 0,
@@ -186,27 +228,34 @@ function crossedLimits(summary, config) {
   const crossed = [];
   if (config.maxP95Ms != null && summary.p95Ms >= config.maxP95Ms) crossed.push(`p95 response time was ${Math.round(summary.p95Ms)} ms (limit ${config.maxP95Ms} ms)`);
   if (config.maxErrorRatePct != null && summary.errorPct > config.maxErrorRatePct) crossed.push(`${summary.errorPct}% of requests failed (limit ${config.maxErrorRatePct}%)`);
+  for (const step of summary.steps) {
+    if (step.maxP95Ms != null && step.p95Ms >= step.maxP95Ms) crossed.push(`"${step.name}" p95 was ${Math.round(step.p95Ms)} ms (limit ${step.maxP95Ms} ms)`);
+  }
   return crossed;
 }
 
-const readSummary = (file) => fs.readFile(file, 'utf8').then((text) => summarize(JSON.parse(text)), () => null);
+const readSummary = (file, steps) => fs.readFile(file, 'utf8').then((text) => summarize(JSON.parse(text), steps), () => null);
 
 async function runK6({ live, config, test, dir }) {
   await fs.mkdir(dir, { recursive: true });
   const configPath = path.join(dir, 'config.json');
   const summaryPath = path.join(dir, 'summary.json');
-  const headers = Object.fromEntries(JSON.parse(decryptSecret(test.headersEnc) ?? '[]').map((h) => [h.name, h.value]));
-  await fs.writeFile(
-    configPath,
-    JSON.stringify({ request: { method: config.method, url: config.url, body: test.body ?? null, headers }, options: k6Options(config), summaryPath })
-  );
+  const steps = stepsOf(config, test);
+  const headers = JSON.parse(decryptSecret(test.headersEnc) ?? '[]');
+  // The project's test account, for {{username}} and {{password}} in scenario steps.
+  const variables = config.kind === 'scenario' ? { username: test.project.e2eUsername ?? '', password: decryptSecret(test.project.e2ePasswordEnc) ?? '' } : {};
+  await fs.writeFile(configPath, JSON.stringify({ origin: originOf(config.url), steps, headers, variables, options: k6Options(config, steps), summaryPath }));
 
   const port = await freePort();
   const env = { ...process.env, AGENTQA_CONFIG: configPath, K6_NO_USAGE_REPORT: 'true' };
   for (const name of HIDDEN_ENV) delete env[name];
+  const target =
+    config.kind === 'scenario'
+      ? steps.map((step, i) => `  ${i + 1}. ${step.name}: ${step.method} ${step.path}`).join('\n')
+      : `  ${config.method} ${config.url}`;
   live.append(
     `$ k6 run: ${config.vus} virtual users, ${config.rampUpSec}s ramp-up + ${config.durationSec}s at full load\n` +
-      `  ${config.method} ${config.url}${config.headerNames?.length ? ` (headers: ${config.headerNames.join(', ')})` : ''}\n\n`
+      `${target}${config.headerNames?.length ? `\n  Headers${config.kind === 'scenario' ? ' for every step' : ''}: ${config.headerNames.join(', ')}` : ''}\n\n`
   );
 
   const child = spawn(K6, ['run', '--address', `127.0.0.1:${port}`, '--no-color', SCRIPT], { env, windowsHide: true });
@@ -229,29 +278,35 @@ async function runK6({ live, config, test, dir }) {
   let ending = null;
   let stopAskedAt = 0;
   let exitCode;
-  for (;;) {
-    exitCode = await Promise.race([exited, sleep(POLL_MS).then(() => undefined)]);
-    if (exitCode !== undefined) break;
-    if (Date.now() - lastSampleAt >= sampleEvery) {
-      const metrics = await readMetrics(port);
-      if (metrics) {
-        const point = sample(metrics);
-        if (point) live.addSample(point);
-        lastSampleAt = Date.now();
+  try {
+    for (;;) {
+      exitCode = await Promise.race([exited, sleep(POLL_MS).then(() => undefined)]);
+      if (exitCode !== undefined) break;
+      if (Date.now() - lastSampleAt >= sampleEvery) {
+        const metrics = await readMetrics(port);
+        if (metrics) {
+          const point = sample(metrics);
+          if (point) live.addSample(point);
+          if (config.kind === 'scenario') live.setStepStats(stepNumbers(steps, (id) => metrics[id]));
+          lastSampleAt = Date.now();
+        }
+      }
+      const stopRequested = await live.flush();
+      if (!ending && (stopRequested || Date.now() - started > limitMs)) {
+        ending = stopRequested ? 'cancelled' : 'timeout';
+        stopAskedAt = Date.now();
+        live.append(ending === 'cancelled' ? '\nStopping at a user’s request…\n' : '\nk6 ran longer than planned; stopping it…\n');
+        await stopK6(port);
+      } else if (ending && Date.now() - stopAskedAt > STOP_GRACE_MS) {
+        await killTree(child);
       }
     }
-    const stopRequested = await live.flush();
-    if (!ending && (stopRequested || Date.now() - started > limitMs)) {
-      ending = stopRequested ? 'cancelled' : 'timeout';
-      stopAskedAt = Date.now();
-      live.append(ending === 'cancelled' ? '\nStopping at a user’s request…\n' : '\nk6 ran longer than planned; stopping it…\n');
-      await stopK6(port);
-    } else if (ending && Date.now() - stopAskedAt > STOP_GRACE_MS) {
-      await killTree(child);
-    }
+  } finally {
+    // Never leave k6 sending load when this loop ends early (e.g. the database is gone).
+    if (child.exitCode === null) await killTree(child);
   }
 
-  const summary = await readSummary(summaryPath);
+  const summary = await readSummary(summaryPath, steps);
   if (ending === 'cancelled') return { status: 'CANCELLED', summary, error: 'Stopped before the end. The numbers cover the time until then.' };
   if (ending === 'timeout') return { status: 'ERROR', summary, error: 'k6 ran longer than planned and was stopped.' };
   if (exitCode === 0 && summary) return { status: 'PASSED', summary, error: null };
@@ -264,7 +319,7 @@ async function runK6({ live, config, test, dir }) {
 }
 
 async function execute(db, id, log) {
-  const run = await db.loadRun.findUnique({ where: { id }, include: { test: { include: { project: { select: { appBaseUrl: true } } } } } });
+  const run = await db.loadRun.findUnique({ where: { id }, include: { test: { include: { project: { select: { appBaseUrl: true, e2eUsername: true, e2ePasswordEnc: true } } } } } });
   const { test, config } = run;
   const live = liveRun(db, id);
   const dir = path.join(RUNS_DIR, id);
@@ -284,7 +339,7 @@ async function execute(db, id, log) {
     // The config file holds the decrypted headers.
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
-  await live.flush({ ...final, finishedAt: new Date() });
+  await saveResult(live.flush, final);
   log(`${test.name}: ${final.status}`);
 }
 

@@ -92,8 +92,17 @@ export default function LoadTestsPage() {
                     <div className={styles.rowText}>
                       <div className={styles.rowTitle}>{test.name}</div>
                       <div className={styles.rowMeta}>
-                        <span className={styles.method}>{test.method}</span>
-                        <span className={styles.url}>{test.url}</span>
+                        {test.kind === 'scenario' ? (
+                          <>
+                            <span className={styles.method}>SCENARIO</span>
+                            <span className={styles.url}>{test.steps.map((s) => s.name).join(' → ')}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className={styles.method}>{test.method}</span>
+                            <span className={styles.url}>{test.url}</span>
+                          </>
+                        )}
                       </div>
                       <div className={styles.rowMeta}>
                         {test.project?.name} · <Users size={12} /> {test.vus} · <Timer size={12} /> {formatSeconds(test.rampUpSec + test.durationSec)}

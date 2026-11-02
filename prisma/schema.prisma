@@ -439,17 +439,22 @@ model CodegenRecording {
   @@index([status, createdAt])
 }
 
-// A k6 load test of one endpoint of a project's app. The URL must stay on the project's
-// Test environment (appBaseUrl), checked by the app when saved and by the worker before each run.
+// A k6 load test of a project's app: one request, or a scenario of steps each virtual user runs in
+// order. Every request stays on the project's Test environment (appBaseUrl), checked by the app when
+// saved and by the worker before each run.
 model LoadTest {
   id              String   @id @default(cuid())
   projectId       String
   name            String
-  method          String   @default("GET")
-  url             String
-  body            String?  @db.Text
-  // Request headers can carry tokens, so they are stored encrypted (src/lib/secrets.js) as JSON
-  // [{ name, value }]; only the names are sent to the browser.
+  kind            String   @default("request") // request | scenario
+  method          String   @default("GET") // request only
+  url             String // request: the URL; scenario: the first step's URL, for lists
+  body            String?  @db.Text // request only
+  // Scenario only: [{ name, method, path, headers, body, expectStatus, extract, thinkTimeSec, maxP95Ms }],
+  // see validateSteps() in src/lib/loadTests.js. No secrets: logins use the project's test account.
+  steps           Json?
+  // Request headers (for a scenario: sent with every step) can carry tokens, so they are stored
+  // encrypted (src/lib/secrets.js) as JSON [{ name, value }]; only the names are sent to the browser.
   headersEnc      String?  @db.Text
   headerNames     String[] @default([])
   vus             Int      @default(10) // virtual users at full load
@@ -476,6 +481,7 @@ model LoadRun {
   status          String    @default("QUEUED")
   config          Json // the test's method, URL, load shape and limits when the run was queued
   samples         Json      @default("[]") // [{ t, vus, rps, avgMs, p95Ms, errorPct }] every few seconds
+  stepStats       Json? // scenario, while running: [{ requests, avgMs, p95Ms, failedPct }] per step so far
   summary         Json? // k6's end-of-test numbers, see summarize() in agent/loadRunner.mjs
   console         String    @default("") @db.Text
   error           String?   @db.Text

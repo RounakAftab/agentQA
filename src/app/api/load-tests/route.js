@@ -24,7 +24,7 @@ export async function POST(request) {
   if (response) return response;
 
   const body = await readJson(request);
-  const project = await db.project.findUnique({ where: { id: String(body.projectId ?? '') }, select: { id: true, appBaseUrl: true } });
+  const project = await db.project.findUnique({ where: { id: String(body.projectId ?? '') }, select: { id: true, appBaseUrl: true, e2eUsername: true, e2ePasswordEnc: true } });
   if (!project) return json({ error: 'Please fix the highlighted fields', fieldErrors: { projectId: 'Choose a project' } }, 400);
 
   const { values, errors } = validateLoadTestInput(body, { project });

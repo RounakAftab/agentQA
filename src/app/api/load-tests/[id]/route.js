@@ -19,7 +19,7 @@ export async function PATCH(request, ctx) {
   const { user, response } = await requireAgentOperator();
   if (response) return response;
   const { id } = await ctx.params;
-  const existing = await db.loadTest.findUnique({ where: { id }, include: { project: { select: { id: true, appBaseUrl: true } } } });
+  const existing = await db.loadTest.findUnique({ where: { id }, include: { project: { select: { id: true, appBaseUrl: true, e2eUsername: true, e2ePasswordEnc: true } } } });
   if (!existing) return notFound();
 
   const { values, errors } = validateLoadTestInput(await readJson(request), { project: existing.project, existing });

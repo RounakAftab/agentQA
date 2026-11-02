@@ -141,11 +141,21 @@ The **Load Tests** menu runs k6 against one endpoint of a project's app and show
    (Windows: `winget install k6 --source winget`, macOS: `brew install k6`), or set `K6_PATH`.
 2. Set the project's app link (**Projects → Edit project → Test environment**). Load tests can only
    target that site (same scheme, host and port), and redirects are not followed.
-3. Click **New load test**: choose the request (method, path, optional headers and body), the
-   number of virtual users, the ramp-up and how long to hold full load, and the pass/fail limits
-   (p95 response time, share of failed requests). Headers are stored encrypted.
+3. Click **New load test** and choose what to test:
+   - **Single request**: one method and path, with optional headers and body.
+   - **Scenario**: up to 10 steps each virtual user runs in order, then starts again (for example
+     log in → search → add to cart). Each step has its own method, path, headers and body, an
+     optional expected status, think time and p95 limit, and can save values from its response
+     (a JSON field like `data.token`, or a header) for later steps as `{{token}}`. Steps can also
+     use `{{username}}` and `{{password}}` (the project's test account), `{{vu}}` and `{{iter}}`.
+     A failed step skips the rest of that pass. Put API keys in **Headers for every step**, not
+     in the steps.
+
+   Then set the number of virtual users, the ramp-up and how long to hold full load, and the
+   pass/fail limits (p95 response time, share of failed requests). Headers are stored encrypted.
 4. **Run load test** queues it for the worker (`npm run agent:worker`). The page shows requests per
-   second, response times and errors live, then k6's final numbers and whether each limit held.
+   second, response times and errors live (and each scenario step's numbers), then k6's final
+   numbers and whether each limit held.
    **Stop** ends the run early and keeps the numbers so far.
 
 Limits: `LOAD_MAX_VUS` (default 100) and `LOAD_MAX_DURATION_SEC` (ramp-up plus duration, default

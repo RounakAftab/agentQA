@@ -53,6 +53,9 @@ function Stats({ run }) {
         <Stat label="p95" value={formatMs(s.p95Ms)} sub={`p90 ${formatMs(s.p90Ms)}`} />
         <Stat label="p99" value={formatMs(s.p99Ms)} sub={`max ${formatMs(s.maxMs)}`} />
         <Stat label="Failed" value={`${s.errorPct}%`} sub={`${s.failedRequests.toLocaleString()} requests`} />
+        {run.config.kind === 'scenario' && s.flows && (
+          <Stat label="Full flows" value={s.flows.completed.toLocaleString()} sub={`p95 ${formatMs(s.flows.p95Ms)} per flow`} />
+        )}
       </div>
     );
   }
@@ -72,6 +75,64 @@ function Stats({ run }) {
 
 const THRESHOLD_LABEL = { http_req_duration: 'p95 response time', http_req_failed: 'Failed requests' };
 
+function thresholdLabel(metric, run) {
+  const step = /^step_(\d+)_duration$/.exec(metric);
+  if (step) return `${run.config.steps?.[Number(step[1])]?.name ?? `Step ${Number(step[1]) + 1}`} p95`;
+  return THRESHOLD_LABEL[metric] ?? metric;
+}
+
+// Each scenario step's numbers: live while the run goes (for the run so far), then k6's final ones.
+function StepsTable({ run }) {
+  if (run.config.kind !== 'scenario') return null;
+  const rows = run.summary?.steps ?? run.stepStats ?? [];
+  if (rows.length === 0) return null;
+  const live = !run.summary;
+  return (
+    <div className={styles.stepsTable}>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th>Requests</th>
+            <th>Average</th>
+            <th>p95{live ? ' so far' : ''}</th>
+            <th>Failed</th>
+            <th>p95 limit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const crossed = r.maxP95Ms != null && r.p95Ms != null && r.p95Ms >= r.maxP95Ms;
+            return (
+              <tr key={`${i}-${r.name}`}>
+                <td>
+                  <span className={styles.stepNo}>{i + 1}</span> {r.name}
+                </td>
+                <td>{r.requests.toLocaleString()}</td>
+                <td>{formatMs(r.avgMs)}</td>
+                <td>{formatMs(r.p95Ms)}</td>
+                <td>{r.failedPct == null ? '–' : `${r.failedPct}%`}</td>
+                <td>
+                  {r.maxP95Ms == null ? (
+                    <span className={styles.muted}>–</span>
+                  ) : (
+                    <span className={crossed ? styles.bad : styles.ok}>
+                      {crossed ? <XCircle size={13} /> : <CheckCircle2 size={13} />} {formatMs(r.maxP95Ms)}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {rows.some((r, i) => i > 0 && r.requests < rows[i - 1].requests) && (
+        <p className={styles.hint}>A step runs fewer times than the one before it when that step failed: the rest of that pass is skipped.</p>
+      )}
+    </div>
+  );
+}
+
 function Thresholds({ run }) {
   const results = run.summary?.thresholds ?? [];
   if (results.length === 0) return null;
@@ -80,7 +141,7 @@ function Thresholds({ run }) {
       {results.map((t) => (
         <li key={`${t.metric}-${t.rule}`} className={t.ok ? styles.ok : styles.bad}>
           {t.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-          <span>{THRESHOLD_LABEL[t.metric] ?? t.metric}</span>
+          <span>{thresholdLabel(t.metric, run)}</span>
           <code>{t.rule}</code>
           <strong>{t.ok ? 'within limit' : 'crossed'}</strong>
         </li>
@@ -182,6 +243,7 @@ function RunPanel({ test, canEdit }) {
 
       {run && <Stats run={run} />}
       {run && <Thresholds run={run} />}
+      {run && <StepsTable run={run} />}
 
       {runs.length > 0 ? (
         <>
@@ -300,14 +362,28 @@ function LoadTestDetail({ params }) {
           ) : (
             <div className={styles.testHead}>
               <div className={styles.testInfo}>
-                <div className={styles.request}>
-                  <span className={styles.method}>{test.method}</span>
-                  <code>{test.url}</code>
-                </div>
+                {test.kind === 'scenario' ? (
+                  <ol className={styles.stepList}>
+                    {test.steps.map((step, i) => (
+                      <li key={step.name}>
+                        <span className={styles.stepNo}>{i + 1}</span>
+                        <strong>{step.name}</strong>
+                        <span className={styles.method}>{step.method}</span>
+                        <code>{step.path}</code>
+                        {step.extract.length > 0 && <span className={styles.saves}>saves {step.extract.map((e) => `{{${e.var}}}`).join(', ')}</span>}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div className={styles.request}>
+                    <span className={styles.method}>{test.method}</span>
+                    <code>{test.url}</code>
+                  </div>
+                )}
                 <p className={styles.meta}>{loadShape(test)}</p>
                 <p className={styles.meta}>
                   {limitsText(test)}
-                  {test.headerNames.length > 0 && ` · Headers: ${test.headerNames.join(', ')}`}
+                  {test.headerNames.length > 0 && ` · Headers${test.kind === 'scenario' ? ' for every step' : ''}: ${test.headerNames.join(', ')}`}
                   {test.body && ' · With a body'}
                 </p>
               </div>

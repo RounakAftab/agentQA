@@ -111,7 +111,16 @@ export function useScriptRun(runId) {
   return run;
 }
 
-export const startScriptRun = (scriptId, options) => request('POST', `/api/codegen/${encodeURIComponent(scriptId)}/runs`, options);
+const pickReport = (data) => data.report ?? null;
+
+// The report of a finished test run (src/lib/codegen/report.js).
+export function useRunReport(runId) {
+  const { value, loaded, error } = useLoad(runId ? `/api/codegen/runs/${encodeURIComponent(runId)}/report` : null, pickReport);
+  return { report: value, loaded, error };
+}
+export const reportDownloadUrl = (runId) => `/api/codegen/runs/${encodeURIComponent(runId)}/report?format=html`;
+
+export const startScriptRun =(scriptId, options) => request('POST', `/api/codegen/${encodeURIComponent(scriptId)}/runs`, options);
 export const cancelScriptRun = (runId) => request('DELETE', `/api/codegen/runs/${encodeURIComponent(runId)}`);
 export const applyHealedFix = (runId) => request('POST', `/api/codegen/runs/${encodeURIComponent(runId)}/apply`);
 

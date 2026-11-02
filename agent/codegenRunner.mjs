@@ -13,6 +13,7 @@ import { buildProject } from '../src/lib/codegen/bundle.js';
 import { parseCodegen } from '../src/lib/codegen/parse.js';
 import { decryptSecret } from '../src/lib/secrets.js';
 import { killTree, redact } from './processes.mjs';
+import { outageTracker, saveResult } from './dbRetry.mjs';
 import { installDependencies, ROOT, PLAYWRIGHT_TEST_VERSION } from './workspace.mjs';
 import { runHealerSession } from './session.mjs';
 
@@ -77,7 +78,10 @@ async function writeProject(script, style) {
     const rel = full.split('/').slice(1).join('/'); // drop the project folder name
     if (!/^(tests|pages)\/|^playwright\.config\.ts$/.test(rel)) continue;
     await fs.mkdir(path.dirname(path.join(RUNNER_DIR, rel)), { recursive: true });
-    await fs.writeFile(path.join(RUNNER_DIR, rel), content);
+    // Runs here also screenshot the final page of a passing test, for the run report. The
+    // downloaded project keeps screenshots for failures only.
+    const written = rel === 'playwright.config.ts' ? content.replace("screenshot: 'only-on-failure'", "screenshot: 'on'") : content;
+    await fs.writeFile(path.join(RUNNER_DIR, rel), written);
     if (rel.startsWith('tests/')) specPath = rel;
   }
   return specPath;
@@ -92,6 +96,7 @@ function liveRun(db, id, secret) {
   let results = null;
   let dirty = false;
   const mask = masker(secret);
+  const outage = outageTracker('codegen');
   return {
     append(text) {
       consoleText += mask(text);
@@ -105,12 +110,24 @@ function liveRun(db, id, secret) {
     get results() {
       return results;
     },
+    // Resolves true when the run should stop (a user asked, or the script was deleted), false to go
+    // on, or null when the database could not be reached: what was not written is kept for the next
+    // flush. Throws once the database has been unreachable for a minute (see dbRetry.mjs).
     async flush(extra = {}) {
       const data = { heartbeatAt: new Date(), ...extra };
+      const wasDirty = dirty;
       if (dirty) Object.assign(data, { console: consoleText }, results ? { results } : {});
       dirty = false;
-      const row = await db.codegenRun.update({ where: { id }, data, select: { cancelRequested: true } });
-      return row.cancelRequested;
+      try {
+        const row = await db.codegenRun.update({ where: { id }, data, select: { cancelRequested: true } });
+        outage.ok();
+        return row.cancelRequested;
+      } catch (err) {
+        if (err.code === 'P2025') return true;
+        dirty ||= wasDirty;
+        outage.failed(err);
+        return null;
+      }
     },
   };
 }
@@ -143,15 +160,19 @@ async function runTests({ live, env, headed, isCancelled }) {
 
   const started = Date.now();
   let ending = null;
-  while (child.exitCode === null && !ending) {
-    const code = await Promise.race([exited, sleep(POLL_MS).then(() => undefined)]);
-    if (code !== undefined) break;
-    const results = await readResults(resultsFile);
-    if (results) live.setResults(results);
-    if (await isCancelled()) ending = 'cancelled';
-    else if (Date.now() - started > RUN_TIMEOUT_MS) ending = 'timeout';
+  try {
+    while (child.exitCode === null && !ending) {
+      const code = await Promise.race([exited, sleep(POLL_MS).then(() => undefined)]);
+      if (code !== undefined) break;
+      const results = await readResults(resultsFile);
+      if (results) live.setResults(results);
+      if (await isCancelled()) ending = 'cancelled';
+      else if (Date.now() - started > RUN_TIMEOUT_MS) ending = 'timeout';
+    }
+  } finally {
+    // Never leave the browser running when this loop ends early (e.g. the database is gone).
+    if (ending || child.exitCode === null) await killTree(child);
   }
-  if (ending) await killTree(child);
   const exitCode = await exited;
 
   const results = await readResults(resultsFile);
@@ -260,7 +281,7 @@ async function execute(db, id, log) {
   // The healer can see the test login; keep it out of what it wrote.
   const mask = masker(credentials.password);
   for (const field of ['healSummary', 'error']) if (final[field]) final[field] = mask(final[field]);
-  await live.flush({ ...final, finishedAt: new Date() });
+  await saveResult(live.flush, final);
   log(`${run.kind} ${script.title}: ${final.status}`);
 }
 

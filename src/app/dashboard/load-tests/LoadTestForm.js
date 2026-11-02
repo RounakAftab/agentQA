@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
 import { createLoadTest, updateLoadTest } from '@/lib/loadTestClient';
+import StepsEditor, { newStep, stepsFromForm, stepsToForm } from './StepsEditor';
 import styles from './LoadTestForm.module.css';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
@@ -18,7 +19,7 @@ const origin = (url) => {
 const initialForm = (test, projects) => {
   if (!test) {
     const first = projects.find((p) => p.appBaseUrl);
-    return { projectId: first?.id ?? '', name: '', method: 'GET', url: '/', body: '', headers: '', vus: '10', rampUpSec: '30', durationSec: '60', maxP95Ms: '500', maxErrorRatePct: '1' };
+    return { projectId: first?.id ?? '', name: '', kind: 'request', method: 'GET', url: '/', body: '', headers: '', vus: '10', rampUpSec: '30', durationSec: '60', maxP95Ms: '500', maxErrorRatePct: '1' };
   }
   // The URL is edited as a path when it is on the project's app.
   const base = origin(test.project?.appBaseUrl ?? '');
@@ -27,6 +28,7 @@ const initialForm = (test, projects) => {
   return {
     projectId: test.project?.id ?? '',
     name: test.name,
+    kind: test.kind,
     method: test.method,
     url,
     body: test.body,
@@ -42,6 +44,7 @@ const initialForm = (test, projects) => {
 // Creates a load test (`test` null) or edits one. Calls onSaved(test) after saving.
 export default function LoadTestForm({ test = null, projects = [], limits, onSaved, onCancel }) {
   const [form, setForm] = useState(() => initialForm(test, projects));
+  const [steps, setSteps] = useState(() => (test?.kind === 'scenario' ? stepsToForm(test.steps) : [newStep(1)]));
   const [clearHeaders, setClearHeaders] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
@@ -51,13 +54,16 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
   const project = test ? test.project : projects.find((p) => p.id === form.projectId);
   const base = origin(project?.appBaseUrl ?? '');
   const hasBody = BODY_METHODS.has(form.method);
+  const scenario = form.kind === 'scenario';
+  const hasTestAccount = test ? Boolean(test.project?.hasTestAccount) : Boolean(project?.e2eUsername && project?.e2ePasswordSet);
 
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
     const { projectId, ...changes } = form;
-    const result = test ? await updateLoadTest(test.id, { ...changes, clearHeaders }) : await createLoadTest(form);
+    if (scenario) changes.steps = stepsFromForm(steps);
+    const result = test ? await updateLoadTest(test.id, { ...changes, clearHeaders }) : await createLoadTest({ projectId, ...changes });
     setSaving(false);
     if (result.ok) return onSaved(result.data.test);
     setFieldErrors(result.data.fieldErrors ?? {});
@@ -95,24 +101,55 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
         {field('name', 'Name', <input id="load-name" className="input" value={form.name} onChange={set('name')} placeholder="Login API under load" />)}
       </div>
 
-      <div className={styles.field}>
-        <label className="label" htmlFor="load-url">Request</label>
-        <div className={styles.request}>
-          <select className={`select ${styles.method}`} value={form.method} onChange={set('method')} aria-label="Method">
-            {METHODS.map((m) => (
-              <option key={m}>{m}</option>
-            ))}
-          </select>
-          {base && <span className={styles.base}>{base}</span>}
-          <input id="load-url" className="input" value={form.url} onChange={set('url')} placeholder="/api/health" spellCheck={false} />
-        </div>
-        {fieldErrors.method && <p className={styles.fieldError}>{fieldErrors.method}</p>}
-        {fieldErrors.url ? (
-          <p className={styles.fieldError}>{fieldErrors.url}</p>
-        ) : (
-          <p className={styles.hint}>Redirects are not followed, so use the final address. A 4xx or 5xx response counts as an error.</p>
-        )}
+      <div className={styles.kinds} role="radiogroup" aria-label="What to load test">
+        {[
+          ['request', 'Single request', 'One endpoint, requested again and again'],
+          ['scenario', 'Scenario', 'Steps each user runs in order, e.g. log in → search → add to cart'],
+        ].map(([value, label, hint]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={form.kind === value}
+            className={`${styles.kind} ${form.kind === value ? styles.kindActive : ''}`}
+            onClick={() => setForm((f) => ({ ...f, kind: value }))}
+          >
+            <strong>{label}</strong>
+            <span>{hint}</span>
+          </button>
+        ))}
       </div>
+
+      {scenario ? (
+        <div className={styles.field}>
+          <span className="label">Steps</span>
+          {fieldErrors.steps && <p className={styles.fieldError}>{fieldErrors.steps}</p>}
+          <StepsEditor steps={steps} onChange={setSteps} base={base} hasTestAccount={hasTestAccount} />
+          <p className={styles.hint}>
+            Each virtual user runs the steps in order, then starts again. A step fails on a different status than expected (or
+            4xx/5xx), or when a value to save is missing; the rest of that pass is skipped. Redirects are not followed.
+          </p>
+        </div>
+      ) : (
+        <div className={styles.field}>
+          <label className="label" htmlFor="load-url">Request</label>
+          <div className={styles.request}>
+            <select className={`select ${styles.method}`} value={form.method} onChange={set('method')} aria-label="Method">
+              {METHODS.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+            {base && <span className={styles.base}>{base}</span>}
+            <input id="load-url" className="input" value={form.url} onChange={set('url')} placeholder="/api/health" spellCheck={false} />
+          </div>
+          {fieldErrors.method && <p className={styles.fieldError}>{fieldErrors.method}</p>}
+          {fieldErrors.url ? (
+            <p className={styles.fieldError}>{fieldErrors.url}</p>
+          ) : (
+            <p className={styles.hint}>Redirects are not followed, so use the final address. A 4xx or 5xx response counts as an error.</p>
+          )}
+        </div>
+      )}
 
       <div className={styles.row3}>
         {field('vus', 'Virtual users', <input id="load-vus" className="input" type="number" min="1" value={form.vus} onChange={set('vus')} />, limits && `Up to ${limits.maxVus}`)}
@@ -136,10 +173,10 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
       </div>
 
       <details className={styles.advanced} open={Boolean(test?.headerNames.length || test?.body)}>
-        <summary>Headers and body</summary>
+        <summary>{scenario ? 'Headers for every step' : 'Headers and body'}</summary>
         {field(
           'headers',
-          'Headers',
+          scenario ? 'Headers sent with every step' : 'Headers',
           <textarea
             id="load-headers"
             className={`input ${styles.code}`}
@@ -149,7 +186,7 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
             spellCheck={false}
             disabled={clearHeaders}
           />,
-          'One "Name: value" per line. Stored encrypted; values are never shown again.'
+          `One "Name: value" per line. Stored encrypted; values are never shown again.${scenario ? ' Put API keys here, not in the steps.' : ''}`
         )}
         {test?.headerNames.length > 0 && (
           <label className={styles.check}>
@@ -157,6 +194,7 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
           </label>
         )}
         {hasBody &&
+          !scenario &&
           field(
             'body',
             'Body',

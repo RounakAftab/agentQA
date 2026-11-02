@@ -27,7 +27,9 @@ import {
   AlertCircle,
   Monitor,
   Check,
+  FileText,
 } from 'lucide-react';
+import RunReport from './RunReport';
 import styles from './RunPanel.module.css';
 
 const RUN_STATUS = {
@@ -38,6 +40,8 @@ const RUN_STATUS = {
   ERROR: { label: 'Error', color: 'danger' },
   CANCELLED: { label: 'Cancelled', color: 'warning' },
 };
+// A finished test run (not a heal) with results has a report.
+const hasReport = (run) => Boolean(run && run.kind === 'run' && ['PASSED', 'FAILED'].includes(run.status) && run.passed + run.failed > 0);
 const seconds = (ms) => (ms == null ? '' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
 
 function StatusIcon({ status, size = 15 }) {
@@ -217,7 +221,7 @@ function HealCard({ run, canEdit, onApplied }) {
 export default function RunPanel({ script, style, canEdit, onScriptChange, onReplaced, onOpenLine }) {
   const { runs, worker, refresh } = useScriptRuns(script.id);
   const [selectedId, setSelectedId] = useState(null);
-  const [tab, setTab] = useState('tests');
+  const [tab, setTab] = useState('report'); // falls back to Tests when the run has no report
   const [headed, setHeaded] = useState(false);
   const [editingLogin, setEditingLogin] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -234,6 +238,9 @@ export default function RunPanel({ script, style, canEdit, onScriptChange, onRep
     if (lastStatus.current && run && lastStatus.current !== run.status && !isRunActive(run)) refresh();
     lastStatus.current = run?.status ?? null;
   }, [run, refresh]);
+  // "live" (a run just started here): its steps while it runs, then its report once it passes.
+  const shownTab =
+    tab === 'live' ? (run?.status === 'PASSED' && hasReport(run) ? 'report' : 'tests') : tab === 'report' && !hasReport(run) ? 'tests' : tab;
 
   const start = async (options) => {
     setBusy(true);
@@ -242,7 +249,7 @@ export default function RunPanel({ script, style, canEdit, onScriptChange, onRep
     setBusy(false);
     if (!result.ok && result.status !== 409) return setError(result.data.error ?? 'Could not start the run');
     setSelectedId(result.data.run.id);
-    setTab(options.kind === 'heal' ? 'console' : 'tests');
+    setTab(options.kind === 'heal' ? 'console' : 'live');
     refresh();
   };
 
@@ -322,18 +329,23 @@ export default function RunPanel({ script, style, canEdit, onScriptChange, onRep
       {runs.length > 0 && (
         <>
           <div className="tabs">
-            <button className={`tab ${tab === 'tests' ? 'active' : ''}`} onClick={() => setTab('tests')}>
+            {hasReport(run) && (
+              <button className={`tab ${shownTab === 'report' ? 'active' : ''}`} onClick={() => setTab('report')}>
+                <FileText size={13} /> Report
+              </button>
+            )}
+            <button className={`tab ${shownTab === 'tests' ? 'active' : ''}`} onClick={() => setTab('tests')}>
               <ListChecks size={13} /> Tests
             </button>
-            <button className={`tab ${tab === 'console' ? 'active' : ''}`} onClick={() => setTab('console')}>
+            <button className={`tab ${shownTab === 'console' ? 'active' : ''}`} onClick={() => setTab('console')}>
               <Terminal size={13} /> Console
             </button>
-            <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>
+            <button className={`tab ${shownTab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>
               <History size={13} /> History ({runs.length})
             </button>
           </div>
           <div className={styles.tabBody}>
-            {tab === 'history' ? (
+            {shownTab === 'history' ? (
               <ul className={styles.history}>
                 {runs.map((r) => (
                   <li key={r.id}>
@@ -341,7 +353,7 @@ export default function RunPanel({ script, style, canEdit, onScriptChange, onRep
                       className={`${styles.historyRow} ${r.id === runId ? styles.historyActive : ''}`}
                       onClick={() => {
                         setSelectedId(r.id);
-                        setTab('tests');
+                        setTab(hasReport(r) ? 'report' : 'tests');
                       }}
                     >
                       <span className={`badge badge-${RUN_STATUS[r.status].color}`}>{RUN_STATUS[r.status].label}</span>
@@ -359,7 +371,9 @@ export default function RunPanel({ script, style, canEdit, onScriptChange, onRep
               <div className={styles.empty}>
                 <Loader2 size={18} className="animate-spin" />
               </div>
-            ) : tab === 'tests' ? (
+            ) : shownTab === 'report' ? (
+              <RunReport key={run.id} runId={run.id} />
+            ) : shownTab === 'tests' ? (
               <TestsTab run={run} onOpenLine={onOpenLine} />
             ) : (
               <ConsoleTab run={run} />
