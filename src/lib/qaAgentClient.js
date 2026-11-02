@@ -45,7 +45,7 @@ function usePolling(url, pickActive) {
 
 const runsActive = (data) => data.runs?.some(isActive);
 const requirementsActive = (data) => data.requirements?.some((r) => isActive(r.lastRun));
-const runActive = (data) => isActive(data.run);
+const runActive = (data) => isActive(data.run) || isActive(data.run?.testRuns?.[0]);
 const never = () => false;
 
 export function useAgentRuns(projectId) {
@@ -111,6 +111,9 @@ export const importRequirements = (projectId, { site, issues }) =>
   send('POST', '/api/qa-agent/requirements/import', { projectId, site, issues });
 export const deleteRequirement =(id) => send('DELETE', `/api/qa-agent/requirements/${encodeURIComponent(id)}`);
 export const cancelAgentRun = (id) => send('DELETE', `/api/qa-agent/runs/${encodeURIComponent(id)}`);
+export const startTestRun = (id, { headed }) => send('POST', `/api/qa-agent/runs/${encodeURIComponent(id)}/test-runs`, { headed });
+export const cancelTestRun = (testRunId) => send('DELETE', `/api/qa-agent/test-runs/${encodeURIComponent(testRunId)}`);
+export const testDownloadUrl = (id) => `/api/qa-agent/runs/${encodeURIComponent(id)}/download`;
 export const startRunner = (id) => send('POST', `/api/qa-agent/runs/${encodeURIComponent(id)}`);
 
 export const RUN_STATUS = {
@@ -118,6 +121,15 @@ export const RUN_STATUS = {
   RUNNING: { label: 'Running', color: 'info' },
   PASSED: { label: 'Done', color: 'success' },
   FAILED: { label: 'Failed', color: 'danger' },
+  CANCELLED: { label: 'Cancelled', color: 'warning' },
+};
+
+export const TEST_RUN_STATUS = {
+  QUEUED: { label: 'Queued', color: 'neutral' },
+  RUNNING: { label: 'Running', color: 'info' },
+  PASSED: { label: 'Passed', color: 'success' },
+  FAILED: { label: 'Failed', color: 'danger' },
+  ERROR: { label: 'Error', color: 'danger' },
   CANCELLED: { label: 'Cancelled', color: 'warning' },
 };
 

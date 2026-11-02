@@ -35,8 +35,8 @@ export default defineConfig({
 `;
 
 // A minimal Playwright project, kept between runs so dependencies install only once.
-async function prepareBlankProject(project, log) {
-  const dir = path.join(ROOT, `${project.id}-blank`);
+async function prepareBlankProject(project, log, suffix = '') {
+  const dir = path.join(ROOT, `${project.id}-blank${suffix}`);
   await fs.mkdir(path.join(dir, 'tests', 'generated'), { recursive: true });
   if (!(await exists(path.join(dir, 'package.json')))) {
     await log('No test repository connected: creating a blank Playwright project');
@@ -65,10 +65,11 @@ export async function installDependencies(dir, log) {
 
 // Clones (or refreshes) the test repository on a clean branch from the default branch, or
 // prepares a blank Playwright project when there is none. Returns { dir, hasRepo }.
-export async function prepareWorkspace(project, branch, log) {
-  if (!project.automationRepoUrl) return { dir: await prepareBlankProject(project, log), hasRepo: false };
+// `suffix` names a separate copy, e.g. '-replay' for test runs, so they never share a folder with a QA Agent run.
+export async function prepareWorkspace(project, branch, log, { suffix = '' } = {}) {
+  if (!project.automationRepoUrl) return { dir: await prepareBlankProject(project, log, suffix), hasRepo: false };
 
-  const dir = path.join(ROOT, project.id);
+  const dir = path.join(ROOT, `${project.id}${suffix}`);
   const base = project.defaultBranch || 'main';
   const git = (...args) => runOrThrow('git', args, { cwd: dir, timeoutMs: 5 * 60_000 });
   const auth = gitAuthArgs(project.automationRepoUrl);
@@ -97,11 +98,12 @@ export async function prepareWorkspace(project, branch, log) {
   return { dir, hasRepo: true };
 }
 
-// Commits the spec, pushes the branch and opens a draft pull request. Without GITHUB_TOKEN
-// the commit stays in the local workspace and { pushed: false } is returned.
-export async function publishSpec({ dir, project, branch, specPath, issueKey, summary, runUrl }) {
+// Commits the spec and its page objects (`files`, spec included), pushes the branch and opens a
+// draft pull request. Without GITHUB_TOKEN the commit stays in the local workspace and
+// { pushed: false } is returned.
+export async function publishSpec({ dir, project, branch, specPath, files = [specPath], issueKey, summary, runUrl }) {
   const git = (...args) => runOrThrow('git', args, { cwd: dir, timeoutMs: 5 * 60_000 });
-  await git('add', '--', specPath);
+  await git('add', '--', ...files);
   const staged = await run('git', ['diff', '--cached', '--quiet'], { cwd: dir });
   if (staged.code !== 0) {
     await git(
@@ -141,7 +143,9 @@ export async function publishSpec({ dir, project, branch, specPath, issueKey, su
       head: branch,
       base: project.defaultBranch || 'main',
       draft: true,
-      body: `Automation test for ${issueKey}, written and verified by the AgentQA QA Agent.\n\nSpec: \`${specPath}\`\n${runUrl ? `Run: ${runUrl}\n` : ''}`,
+      body: `Automation test for ${issueKey}, written and verified by the AgentQA QA Agent with the Page Object Model.\n\nSpec: \`${specPath}\`\n${
+        files.length > 1 ? `Page objects:\n${files.filter((f) => f !== specPath).map((f) => `- \`${f}\``).join('\n')}\n` : ''
+      }${runUrl ? `Run: ${runUrl}\n` : ''}`,
     }),
   });
   if (!res.ok) throw new Error(`GitHub could not open the pull request (${res.status}): ${(await res.text()).slice(0, 300)}`);

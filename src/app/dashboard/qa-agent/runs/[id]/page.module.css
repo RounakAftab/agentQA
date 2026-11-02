@@ -309,3 +309,41 @@
   resize: vertical;
   background: var(--slate-50);
 }
+
+/* Spec and page object files of a Page Object Model test */
+.fileTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.fileTab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--slate-700);
+  cursor: pointer;
+}
+
+.fileTab:hover {
+  border-color: var(--slate-300);
+}
+
+.fileTabActive {
+  background: var(--primary-50);
+  border-color: var(--primary-200);
+  color: var(--primary-700);
+}
+
+.fileKind {
+  font-family: var(--font-sans, inherit);
+  font-size: 10px;
+  color: var(--slate-500);
+}

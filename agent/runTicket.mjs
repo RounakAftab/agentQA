@@ -6,7 +6,8 @@ import path from 'node:path';
 import { jiraForProject, jiraStatusesFor } from '../src/lib/jira.js';
 import { decryptSecret } from '../src/lib/secrets.js';
 import { specPathFor } from '../src/lib/agentSteps.js';
-import { checkSpec } from './guardrails.mjs';
+import { checkPageObject, checkSpec } from './guardrails.mjs';
+import { collectSpecFiles } from './pomFiles.mjs';
 import { runSpec } from './playwright.mjs';
 import { prepareWorkspace, publishSpec } from './workspace.mjs';
 import { runAgentSession, runHealerSession } from './session.mjs';
@@ -125,6 +126,8 @@ export async function runTicket({ db, run, abortController }) {
       costUsd += outcome.costUsd;
       await update({ costUsd });
     };
+    // Page objects written for this ticket so far, by the author and then the healer.
+    const pageObjects = {};
     // Tools report under the step of the session that called them ('agent' or 'heal').
     const sessionCtx = (tag) => ({
       log,
@@ -136,9 +139,14 @@ export async function runTicket({ db, run, abortController }) {
         await update({ specContent: content });
         await log(tag, 'success', `Wrote ${specPath}`);
       },
+      savePageObject: async (file, content) => {
+        pageObjects[file] = content;
+        await update({ pageObjects });
+        await log(tag, 'success', `Wrote page object ${file}`);
+      },
       countTestRun: (n) => update({ testAttempts: n }),
     });
-    const session = { workspace, project, issue, specPath, testEnv, credentials, abortController };
+    const session = { workspace, project, issue, specPath, testEnv, credentials, abortController, pom: true };
     const outcome = await runAgentSession({ ...session, ctx: sessionCtx('agent') });
     checkCancelled();
     await addCost(outcome);
@@ -156,8 +164,13 @@ export async function runTicket({ db, run, abortController }) {
           draft: finished.lastDraft,
         };
       }
-      const { errors } = checkSpec(content, plan, credentials);
+      const { errors } = checkSpec(content, plan, credentials, { pom: true });
       if (errors.length > 0) return { problem: `Spec breaks the rules: ${errors.join(' ')}`, draft: content };
+      for (const file of Object.keys(pageObjects)) {
+        const source = await fs.readFile(path.join(workspace, file), 'utf8').catch(() => '');
+        const checked = checkPageObject(source, credentials);
+        if (checked.errors.length > 0) return { problem: `Page object ${file} breaks the rules: ${checked.errors.join(' ')}`, draft: content };
+      }
       const verification = await runSpec({ workspace, specPath, env: testEnv, signal: abortController.signal });
       checkCancelled();
       // Healing can't fix the worker's setup, so stop here with the reason.
@@ -183,6 +196,7 @@ export async function runTicket({ db, run, abortController }) {
         const healed = await runHealerSession({
           ...session,
           ctx: sessionCtx('heal'),
+          pageObjects: { ...pageObjects },
           plan,
           draft: result.draft,
           problem: result.problem,
@@ -202,14 +216,19 @@ export async function runTicket({ db, run, abortController }) {
       await skip('heal', 'Skipped: the spec passed on the first verification');
     }
     const { content } = result;
-    await update({ verifiedPass: true, specContent: content });
+    // Everything the passing spec imports, as it is on disk now, so the test can be run again on its own.
+    const specFiles = await collectSpecFiles(workspace, specPath);
+    await update({ verifiedPass: true, specContent: content, pageObjects: specFiles });
+    await log('verify', 'info', `Page objects: ${Object.keys(specFiles).join(', ') || 'none'}`);
     await log(skipped.includes('heal') ? 'verify' : 'heal', 'success', `Passed: ${result.stats.expected} test(s) in ${(result.stats.durationMs / 1000).toFixed(1)}s`);
 
     // 6. Commit, push and open a draft PR (only with a test repository).
     let prUrl = null;
     if (hasRepo) {
       await step('publish');
-      const published = await publishSpec({ dir: workspace, project, branch, specPath, issueKey: issue.key, summary: issue.summary, runUrl });
+      // The spec and the page objects written for it; unchanged repository files add nothing to the commit.
+      const files = [specPath, ...new Set([...Object.keys(pageObjects), ...Object.keys(specFiles)])];
+      const published = await publishSpec({ dir: workspace, project, branch, specPath, files, issueKey: issue.key, summary: issue.summary, runUrl });
       prUrl = published.prUrl;
       await update({ prUrl });
       await log(
@@ -237,7 +256,7 @@ export async function runTicket({ db, run, abortController }) {
     }
     const testCase = await recordTestCase(db, project, requirementId, issue);
     await log('jira.done', 'success', `Saved test case for ${issue.key}`);
-    await requestApproval(db, { run, testCase, issue, specPath, content, prUrl });
+    await requestApproval(db, { run, testCase, issue, specPath, content: withPageObjects(specPath, content, specFiles), prUrl });
     await log('jira.done', 'success', 'Sent the spec to Approvals for review');
     await audit('agent.run.passed', `${specPath}${prUrl ? ` · ${prUrl}` : ''}`);
     return { status: 'PASSED' };
@@ -251,6 +270,12 @@ export async function runTicket({ db, run, abortController }) {
     err.step = currentStep;
     throw err;
   }
+}
+
+// The spec and its page objects as one text for the Approvals code preview.
+function withPageObjects(specPath, content, files) {
+  const extra = Object.entries(files).map(([file, source]) => `// ───── ${file} ─────\n${source.trimEnd()}`);
+  return extra.length ? [`// ───── ${specPath} ─────\n${content.trimEnd()}`, ...extra].join('\n\n') : content;
 }
 
 // Keeps the dashboard's requirement and test-case counts in step with real automation.

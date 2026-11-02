@@ -89,14 +89,15 @@ async function writeProject(script, style) {
 
 // Console and results, written to the run every second; also where cancellation is noticed.
 // `secret` (the test password) is masked in everything written.
-const masker = (secret) => (text) => (secret && secret.length >= 3 && text ? text.split(secret).join('••••••') : text);
+export const masker = (secret) => (text) => (secret && secret.length >= 3 && text ? text.split(secret).join('••••••') : text);
 
-function liveRun(db, id, secret) {
+// `table` is the Prisma model of the run: db.codegenRun or db.agentTestRun (same columns).
+export function liveRun(table, id, secret, tag = 'codegen') {
   let consoleText = '';
   let results = null;
   let dirty = false;
   const mask = masker(secret);
-  const outage = outageTracker('codegen');
+  const outage = outageTracker(tag);
   return {
     append(text) {
       consoleText += mask(text);
@@ -119,7 +120,7 @@ function liveRun(db, id, secret) {
       if (dirty) Object.assign(data, { console: consoleText }, results ? { results } : {});
       dirty = false;
       try {
-        const row = await db.codegenRun.update({ where: { id }, data, select: { cancelRequested: true } });
+        const row = await table.update({ where: { id }, data, select: { cancelRequested: true } });
         outage.ok();
         return row.cancelRequested;
       } catch (err) {
@@ -134,16 +135,17 @@ function liveRun(db, id, secret) {
 
 const readResults = (file) => fs.readFile(file, 'utf8').then(JSON.parse, () => null);
 
-// Runs the project's tests with the list reporter (console) and the Codegen reporter (results).
+// Runs the project's tests (in `cwd`; `testArgs` narrows them, e.g. to one spec) with the list
+// reporter (console) and the Codegen reporter (results).
 // Resolves 'passed' | 'failed' | 'error' | 'cancelled' | 'timeout'.
-async function runTests({ live, env, headed, isCancelled }) {
-  const resultsFile = path.join(RUNNER_DIR, '.agentqa', `results-${Date.now()}.json`);
+export async function runTests({ live, env, headed, isCancelled, cwd = RUNNER_DIR, testArgs = [] }) {
+  const resultsFile = path.join(cwd, '.agentqa', `results-${Date.now()}.json`);
   await fs.mkdir(path.dirname(resultsFile), { recursive: true });
-  const args = ['playwright', 'test', `--reporter=list,${REPORTER}`, '--retries=0', '--workers=1', ...(headed ? ['--headed'] : [])];
+  const args = ['playwright', 'test', ...testArgs, `--reporter=list,${REPORTER}`, '--retries=0', '--workers=1', ...(headed ? ['--headed'] : [])];
   live.append(`$ npx ${args.join(' ').replace(REPORTER, 'agentqa-reporter')}\n\n`);
 
   const child = spawn('npx', args, {
-    cwd: RUNNER_DIR,
+    cwd,
     env: { ...env, AGENTQA_RESULTS: resultsFile, FORCE_COLOR: '0' },
     shell: process.platform === 'win32',
     windowsHide: true,
@@ -256,7 +258,7 @@ async function execute(db, id, log) {
   const run = await db.codegenRun.findUnique({ where: { id }, include: { script: true } });
   const { script } = run;
   const credentials = { username: script.e2eUsername ?? '', password: decryptSecret(script.e2ePasswordEnc) ?? '' };
-  const live = liveRun(db, id, credentials.password);
+  const live = liveRun(db.codegenRun, id, credentials.password);
   const isCancelled = () => live.flush();
   const env = { ...process.env, BASE_URL: origin(script.startUrl), E2E_USERNAME: credentials.username, E2E_PASSWORD: credentials.password, CI: '1' };
   for (const name of HIDDEN_ENV) delete env[name];

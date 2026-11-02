@@ -6,7 +6,8 @@ import Header from '@/components/Header';
 import { useCurrentUser } from '@/lib/teamStore';
 import { formatDateTime, formatDuration, formatTime, getRelativeTime } from '@/lib/format';
 import { AGENT_STEPS, stepLabel } from '@/lib/agentSteps';
-import { useAgentRun, cancelAgentRun, startRunner, RUN_STATUS, isRunActive } from '@/lib/qaAgentClient';
+import { useAgentRun, cancelAgentRun, startRunner, RUN_STATUS, isRunActive, testDownloadUrl } from '@/lib/qaAgentClient';
+import TestRunPanel from './TestRunPanel';
 import { buildJiraUpdate } from '@/lib/jiraUpdate';
 import {
   ArrowLeft,
@@ -75,6 +76,7 @@ function RunDetail({ params }) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
   const [starting, setStarting] = useState(false);
+  const [openFile, setOpenFile] = useState(null); // null = the spec
   // Ticks so a queued run can tell when its runner is taking unusually long.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -284,24 +286,57 @@ function RunDetail({ params }) {
           <h3 className={`${styles.panelTitle} ${styles.titleWithHint}`}>
             <FileCode2 size={16} /> Test code
             {run.verifiedPass && <span className="badge badge-success">Passed when run</span>}
-            {run.specContent && (
-              <button className={`btn btn-secondary btn-sm ${styles.titleAction}`} onClick={downloadSpec} id="btn-download-spec">
-                <Download size={14} /> Download
-              </button>
-            )}
+            {run.specContent &&
+              (run.pageObjects.length > 0 ? (
+                <a href={testDownloadUrl(run.id)} className={`btn btn-secondary btn-sm ${styles.titleAction}`} id="btn-download-spec" download>
+                  <Download size={14} /> Download (.zip)
+                </a>
+              ) : (
+                <button className={`btn btn-secondary btn-sm ${styles.titleAction}`} onClick={downloadSpec} id="btn-download-spec">
+                  <Download size={14} /> Download
+                </button>
+              ))}
           </h3>
           <p className={styles.hint}>
-            The automated Playwright test{run.specPath ? <> (<code>{run.specPath}</code>)</> : ''}.{' '}
-            {run.prUrl ? 'It is also in the pull request linked at the top.' : 'Download it to add it to your test project.'}
+            {run.pageObjects.length > 0
+              ? `The Playwright test, written with the Page Object Model: the spec and ${run.pageObjects.length} page object file(s), at their paths in the test project. `
+              : `The automated Playwright test${run.specPath ? ` (${run.specPath})` : ''}. `}
+            {run.prUrl ? 'They are also in the pull request linked at the top.' : 'Download them to add them to your test project.'}
           </p>
+          {run.specContent && (run.pageObjects.length > 0 || active) && (
+            <div className={styles.fileTabs} role="tablist" aria-label="Test files">
+              {[{ path: run.specPath, content: run.specContent, spec: true }, ...run.pageObjects].map((f) => {
+                const selected = (openFile ?? run.specPath) === f.path;
+                return (
+                  <button
+                    key={f.path}
+                    role="tab"
+                    aria-selected={selected}
+                    className={`${styles.fileTab} ${selected ? styles.fileTabActive : ''}`}
+                    onClick={() => setOpenFile(f.path)}
+                    title={f.path}
+                  >
+                    {f.path.split('/').pop()}
+                    <span className={styles.fileKind}>{f.spec ? 'spec' : 'page object'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {run.specContent ? (
-            <pre className={styles.code}>{run.specContent}</pre>
+            <pre className={styles.code}>
+              {run.pageObjects.find((f) => f.path === openFile)?.content ?? run.specContent}
+            </pre>
           ) : (
             <p className={styles.empty}>
               {active ? 'The code appears here once the AI has written it.' : 'No test code was written in this run.'}
             </p>
           )}
         </section>
+
+        {run.specContent && !active && (
+          <TestRunPanel run={run} worker={worker} canOperate={OPERATOR_ROLES.includes(me?.role)} onChange={refresh} />
+        )}
 
         <section className={`card ${styles.panel}`}>
           <h3 className={`${styles.panelTitle} ${styles.titleWithHint}`}>

@@ -21,15 +21,8 @@ function leaksCredentials(content, { username, password } = {}) {
   );
 }
 
-// `credentials` is the project's test account: { username, password }.
-export function checkSpec(content, plan, credentials = {}) {
-  const errors = [];
-  const warnings = [];
-
-  if (!/from\s+['"]@playwright\/test['"]/.test(content)) {
-    errors.push("Import test and expect from '@playwright/test'.");
-  }
-
+// Rules for any file the agent writes: specs and page objects.
+function checkCommon(content, credentials, errors, warnings) {
   // XPath in any form: xpath= engine, page.$x, or a locator string starting with / or (.
   if (/xpath\s*=/i.test(content) || /\$x\s*\(/.test(content) || /locator\(\s*['"`]\s*(\/|\.\.\/|\(\s*\/)/.test(content)) {
     errors.push('XPath selectors are not allowed. Use getByRole, getByLabel, getByPlaceholder or getByText.');
@@ -47,6 +40,66 @@ export function checkSpec(content, plan, credentials = {}) {
   if (/(password|passwd|secret|token)\w*\s*[:=]\s*['"`][^'"`\s]{3,}['"`]/i.test(content)) {
     errors.push('A credential appears to be hardcoded. Read credentials from process.env (E2E_USERNAME, E2E_PASSWORD).');
   }
+  if (/\.locator\(\s*['"`][.#\[]/.test(content)) {
+    warnings.push('CSS locators found. Prefer role-based selectors where the page allows it.');
+  }
+  if (/waitForTimeout\s*\(/.test(content)) {
+    warnings.push('waitForTimeout() makes tests slow and flaky. Wait for a visible element or URL instead.');
+  }
+}
+
+// Folders page objects live in. A path is a page object when one of its folders has one of these names.
+const PAGE_DIRS = new Set(['pages', 'page-objects', 'pageobjects', 'pom', 'poms']);
+export const DEFAULT_PAGES_DIR = 'tests/pages';
+
+// Why the agent may not write a page object at `rel` (repository-relative), or null.
+export function pageObjectPathProblem(rel) {
+  const parts = String(rel ?? '').replace(/\\/g, '/').split('/');
+  if (!rel || rel.startsWith('/') || /^[a-z]:/i.test(rel) || parts.some((p) => p === '..' || p === '.' || p === '')) {
+    return 'Use a path relative to the repository root, such as tests/pages/LoginPage.ts.';
+  }
+  if (parts.some((p) => ['node_modules', '.git', '.agentqa'].includes(p))) return 'That folder is not writable.';
+  if (!parts.slice(0, -1).some((p) => PAGE_DIRS.has(p.toLowerCase()))) {
+    return `Page objects go in a pages folder: ${DEFAULT_PAGES_DIR}/, or the repository's own page-object folder.`;
+  }
+  const file = parts.at(-1);
+  if (!/^[A-Za-z0-9_.-]+\.(ts|js|mjs)$/.test(file)) return 'Page object files must be .ts, .js or .mjs.';
+  if (/\.(spec|test)\.\w+$/.test(file)) return 'A page object must not be named like a test (.spec / .test).';
+  return null;
+}
+
+// A page object: locators and actions for one page. No tests in it.
+export function checkPageObject(content, credentials = {}) {
+  const errors = [];
+  const warnings = [];
+  checkCommon(content, credentials, errors, warnings);
+  if (/(?<![.\w])test(\.step)?\s*\(/.test(content) || /(?<![.\w])test\.(describe|only|skip)\b/.test(content)) {
+    errors.push('A page object holds locators and actions only. Keep test() and test.step() in the spec.');
+  }
+  if (!/\bclass\s+\w+/.test(content)) errors.push('Write the page object as a class (e.g. export class LoginPage { constructor(page) {...} }).');
+  return { errors, warnings };
+}
+
+// `credentials` is the project's test account: { username, password }. With `pom`, the spec must
+// get every locator from page objects.
+export function checkSpec(content, plan, credentials = {}, { pom = false } = {}) {
+  const errors = [];
+  const warnings = [];
+
+  if (!/from\s+['"]@playwright\/test['"]/.test(content)) {
+    errors.push("Import test and expect from '@playwright/test'.");
+  }
+  checkCommon(content, credentials, errors, warnings);
+
+  if (pom) {
+    const imports = [...content.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
+    if (!imports.some((m) => m.split('/').some((p) => PAGE_DIRS.has(p.toLowerCase())))) {
+      errors.push(`Use the Page Object Model: import the page objects (e.g. from '../pages/LoginPage') and use them in the test.`);
+    }
+    if (/\bpage\s*\.\s*(getBy\w+|locator|frameLocator|\$\$?)\s*\(/.test(content)) {
+      errors.push('Locators belong in page objects. Replace page.getBy...()/page.locator() in the spec with page-object members.');
+    }
+  }
 
   const steps = count(content, /\btest\.step\s*\(/g);
   const asserts = count(content, /\bexpect(\.soft)?\s*\(/g);
@@ -63,12 +116,6 @@ export function checkSpec(content, plan, credentials = {}) {
     errors.push('Structure the test with test.step() blocks that mirror the Jira steps.');
   }
 
-  if (/\.locator\(\s*['"`][.#\[]/.test(content)) {
-    warnings.push('CSS locators found. Prefer role-based selectors where the page allows it.');
-  }
-  if (/waitForTimeout\s*\(/.test(content)) {
-    warnings.push('waitForTimeout() makes tests slow and flaky. Wait for a visible element or URL instead.');
-  }
   if (/test\.(only|skip)\s*\(/.test(content)) {
     errors.push('Remove test.only / test.skip.');
   }

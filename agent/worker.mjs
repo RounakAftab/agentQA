@@ -10,6 +10,7 @@ import { runTicket, CancelledError } from './runTicket.mjs';
 import { recordingLoop } from './recorder.mjs';
 import { codegenRunLoop } from './codegenRunner.mjs';
 import { loadRunLoop } from './loadRunner.mjs';
+import { testRunLoop } from './testRunner.mjs';
 import { redact } from './processes.mjs';
 
 // A slow connection to a cloud database can take longer than Prisma's 10 s pool timeout.
@@ -154,6 +155,8 @@ async function main() {
   const codegenRuns = ONCE ? null : codegenRunLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
   // Load tests send real traffic, so they run only where someone started a worker on purpose.
   const loadRuns = ONCE ? null : loadRunLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
+  // "Run test" may show the browser on this computer, so like Codegen runs it needs a long-running worker.
+  const testRuns = ONCE ? null : testRunLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
 
   while (!stopping) {
     try {
@@ -173,7 +176,7 @@ async function main() {
   }
 
   clearInterval(beat);
-  await Promise.all([recorder, codegenRuns, loadRuns]);
+  await Promise.all([recorder, codegenRuns, loadRuns, testRuns]);
   await db.agentWorker.delete({ where: { id: WORKER_ID } }).catch(() => {});
   await db.$disconnect();
   if (ONCE) console.log('[worker] Queue is empty, exiting');

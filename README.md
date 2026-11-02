@@ -77,6 +77,20 @@ comment. These rules are checked in code, not just in the prompt: role-based sel
 XPath, no credentials in test files, one `test.step()` per Jira step and one `expect()` per
 acceptance criterion. A spec that breaks a rule is rejected.
 
+**Page Object Model.** Every test is written with page objects. The agent writes one class per page
+(`tests/pages/LoginPage.ts`, or the test repository's own page-object folder) holding its locators
+and actions. The spec imports them and only calls and asserts. A spec that calls
+`page.getByRole()`/`page.locator()` itself is rejected. The pull request, the Approvals preview and
+**Download (.zip)** on the run page include the spec and its page objects at their repository paths.
+
+**Run test (headless or headed).** A finished run's page has **Run test**. It runs the saved spec and
+page objects again, without the AI, against the project's app link. It runs headless by default.
+Tick **Show browser** to open a visible browser window on the computer the worker runs on. The
+results and console stream into the page. The run uses a separate copy of the test repository
+(`.agent-workspaces/<project>-replay`), so it never disturbs a QA Agent run. Test runs need a
+worker kept running on a computer (`npm run agent:worker` or `agent:worker:prod`). The on-demand
+GitHub Actions runner doesn't take them.
+
 **Jira tickets without a Jira connection**
 
 If you can't connect Jira (no API token, or third-party apps aren't allowed), tickets still work

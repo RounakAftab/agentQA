@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { checkSpec } from './guardrails.mjs';
+import { checkPageObject, checkSpec, DEFAULT_PAGES_DIR, pageObjectPathProblem } from './guardrails.mjs';
 import { runSpec } from './playwright.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +32,7 @@ export function ticketPrompt({ issue, project, specPath }) {
 Project: ${project.name}
 Application under test: ${project.appBaseUrl}  (also available to tests as process.env.BASE_URL)
 Spec file: ${specPath}
+Page objects: ${DEFAULT_PAGES_DIR}/ (or the repository's own page-object folder, if it has one)
 
 # ${issue.key}: ${issue.summary}
 Type: ${issue.type || 'n/a'} · Priority: ${issue.priority || 'n/a'}
@@ -40,8 +41,19 @@ ${issue.description || '(The ticket has no description.)'}`;
 }
 
 // What the healer is told: the plan to keep, the spec (or rejected draft) and why it fails.
-export function healerPrompt({ issue, project, specPath, plan, draft, problem, failures }) {
+export function healerPrompt({ issue, project, specPath, plan, draft, problem, failures, pom = false, pageObjects = {} }) {
   const failureText = (failures ?? []).map((f) => `- ${f.title} (${f.status}):\n${f.error}`).join('\n\n');
+  const pomText = pom
+    ? `
+## Page Object Model
+The test uses page objects. Keep it that way: locators and page actions stay in page objects
+(${DEFAULT_PAGES_DIR}/ or the repository's page-object folder), the spec only calls them and asserts.
+A failing locator is fixed in its page object with \`write_page_object\`, not in the spec.
+${Object.entries(pageObjects)
+  .map(([file, content]) => `\n### ${file}\n\`\`\`ts\n${content}\n\`\`\``)
+  .join('\n') || '\nNo page objects were saved yet.'}
+`
+    : '';
   return `Heal the failing test for ${issue.key}.
 
 Project: ${project.name}
@@ -63,7 +75,8 @@ ${plan.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 ${problem}
 ${failureText ? `\n${failureText}\n` : ''}
 ## Current ${draft ? 'spec' : 'state'}
-${draft ? `\`\`\`ts\n${draft}\n\`\`\`` : `No spec was saved. Write ${specPath} from the plan.`}`;
+${draft ? `\`\`\`ts\n${draft}\n\`\`\`` : `No spec was saved. Write ${specPath} from the plan.`}
+${pomText}`;
 }
 
 // Writes and fixes a spec for one ticket. The author session plans and writes it; the healer
@@ -77,7 +90,9 @@ export function runHealerSession(options) {
   return runSession({ ...options, mode: 'heal' });
 }
 
-async function runSession({ mode, workspace, project, issue, specPath, testEnv, credentials, abortController, ctx, plan: fixedPlan, draft, problem, failures, testRunsSoFar = 0 }) {
+// `pom`: the spec must use page objects, which the agent writes with write_page_object. `pageObjects`
+// ({ path: source }) are the ones already written for this ticket, shown to the healer.
+async function runSession({ mode, workspace, project, issue, specPath, testEnv, credentials, abortController, ctx, plan: fixedPlan, draft, problem, failures, testRunsSoFar = 0, pom = false, pageObjects = {} }) {
   const healing = mode === 'heal';
   const tag = healing ? 'heal' : 'agent';
   let plan = fixedPlan ?? null;
@@ -85,6 +100,7 @@ async function runSession({ mode, workspace, project, issue, specPath, testEnv, 
   let lastResult = null;
   let lastDraft = null;
   let lastRejection = null;
+  const written = {}; // page objects written in this session: { path: source }
 
   const qa = createSdkMcpServer({
     name: 'qa',
@@ -148,7 +164,7 @@ async function runSession({ mode, workspace, project, issue, specPath, testEnv, 
         { content: z.string().min(20).describe('Complete TypeScript source of the spec file') },
         async ({ content }) => {
           if (!plan) return text('Call submit_test_plan first.');
-          const { errors, warnings } = checkSpec(content, plan, credentials);
+          const { errors, warnings } = checkSpec(content, plan, credentials, { pom });
           if (errors.length > 0) {
             lastDraft = content;
             lastRejection = errors.join(' ');
@@ -162,6 +178,30 @@ async function runSession({ mode, workspace, project, issue, specPath, testEnv, 
           lastRejection = null;
           await ctx.saveSpec(content);
           return text(`Saved ${specPath}.${warnings.length ? `\nWarnings:\n- ${warnings.join('\n- ')}` : ''}`);
+        }
+      ),
+      pom && tool(
+        'write_page_object',
+        `Create or replace a page object file: one class per page with its locators and actions (e.g. ${DEFAULT_PAGES_DIR}/LoginPage.ts). The file is checked against the rules; if it breaks one, it is not saved and the problems are returned.`,
+        {
+          path: z.string().min(3).describe(`File path relative to the repository root, inside a pages folder, e.g. ${DEFAULT_PAGES_DIR}/LoginPage.ts`),
+          content: z.string().min(20).describe('Complete source of the page object file'),
+        },
+        async ({ path: rel, content }) => {
+          const problemWithPath = pageObjectPathProblem(rel);
+          if (problemWithPath) return { ...text(`Not saved. ${problemWithPath}`), isError: true };
+          const { errors, warnings } = checkPageObject(content, credentials);
+          if (errors.length > 0) {
+            await ctx.log(tag, 'warn', `Page object ${rel} rejected: ${errors.join(' ')}`);
+            return { ...text(`Not saved. Fix these problems:\n- ${errors.join('\n- ')}`), isError: true };
+          }
+          const file = rel.replace(/\\/g, '/');
+          const full = inside(workspace, file);
+          await fs.mkdir(path.dirname(full), { recursive: true });
+          await fs.writeFile(full, content, 'utf8');
+          written[file] = content;
+          await ctx.savePageObject?.(file, content);
+          return text(`Saved ${file}.${warnings.length ? `\nWarnings:\n- ${warnings.join('\n- ')}` : ''}`);
         }
       ),
       tool(
@@ -196,7 +236,7 @@ async function runSession({ mode, workspace, project, issue, specPath, testEnv, 
 
   const session = query({
     prompt: healing
-      ? healerPrompt({ issue, project, specPath, plan, draft, problem, failures })
+      ? healerPrompt({ issue, project, specPath, plan, draft, problem, failures, pom, pageObjects })
       : ticketPrompt({ issue, project, specPath }),
     options: {
       model: process.env.AGENT_MODEL || 'claude-haiku-5-5',
@@ -253,5 +293,6 @@ async function runSession({ mode, workspace, project, issue, specPath, testEnv, 
     // A draft the guard refused and never replaced, so the healer can start from it.
     lastDraft,
     lastRejection,
+    pageObjects: written,
   };
 }

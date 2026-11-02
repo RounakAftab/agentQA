@@ -73,6 +73,7 @@ model User {
   codegenRuns       CodegenRun[]
   loadTests         LoadTest[]
   loadRuns          LoadRun[]
+  agentTestRuns     AgentTestRun[]
 }
 
 model PasswordToken {
@@ -316,6 +317,7 @@ model AgentRun {
   testPlan        Json? // { flow, steps[], acceptanceCriteria[] } submitted by the agent
   specPath        String? // tests/generated/scrum_12.spec.ts
   specContent     String?        @db.Text
+  pageObjects     Json? // { "tests/pages/LoginPage.ts": source } the spec needs: written by the agent or imported from the repo
   status          AgentRunStatus @default(QUEUED)
   step            String? // current pipeline step, see src/lib/agentSteps.js
   verifiedPass    Boolean        @default(false) // set only by the worker's own test run
@@ -337,9 +339,36 @@ model AgentRun {
   requirement Requirement?    @relation(fields: [requirementId], references: [id], onDelete: SetNull)
   events      AgentRunEvent[]
   approval    Approval?
+  testRuns    AgentTestRun[]
 
   @@index([status, queuedAt])
   @@index([projectId, issueKey])
+}
+
+// The saved test of a QA Agent run, run again without the AI ("Run test" on the run page),
+// headless or with the browser visible on the worker's computer. See agent/testRunner.mjs.
+model AgentTestRun {
+  id              String    @id @default(cuid())
+  agentRunId      String
+  headed          Boolean   @default(false)
+  status          String    @default("QUEUED") // QUEUED | RUNNING | PASSED | FAILED | ERROR | CANCELLED
+  console         String    @default("") @db.Text
+  results         Json? // same shape as CodegenRun.results (agent/codegenReporter.cjs)
+  error           String?   @db.Text
+  cancelRequested Boolean   @default(false)
+  workerId        String?
+  hostname        String?
+  requestedById   String?
+  heartbeatAt     DateTime?
+  createdAt       DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  agentRun    AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  requestedBy User?    @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([agentRunId, createdAt])
+  @@index([status, createdAt])
 }
 
 model AgentRunEvent {
