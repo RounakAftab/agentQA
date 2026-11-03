@@ -267,9 +267,10 @@ export function validateLoadTestInput(input, { project, existing = null }) {
     ['durationSec', 'Duration', 10],
   ]) {
     if (!has(key)) continue;
-    const n = integer(input[key], { min, max: key === 'vus' ? limits.maxVus : limits.maxDurationSec });
-    if (n == null) errors[key] = `${label} must be a whole number from ${min} to ${key === 'vus' ? limits.maxVus : limits.maxDurationSec}`;
-    else values[key] = n;
+    const max = key === 'vus' ? limits.maxVus ?? Number.MAX_SAFE_INTEGER : limits.maxDurationSec;
+    const n = integer(input[key], { min, max });
+    if (n != null) values[key] = n;
+    else errors[key] = max === Number.MAX_SAFE_INTEGER ? `${label} must be a whole number, at least ${min}` : `${label} must be a whole number from ${min} to ${max}`;
   }
   const shape = {
     vus: values.vus ?? existing?.vus ?? 1,
@@ -277,7 +278,9 @@ export function validateLoadTestInput(input, { project, existing = null }) {
     durationSec: values.durationSec ?? existing?.durationSec ?? 10,
   };
   const overLimit = limitProblem(shape, limits);
-  if (overLimit && !errors.vus && !errors.durationSec && !errors.rampUpSec) errors[shape.vus > limits.maxVus ? 'vus' : 'durationSec'] = overLimit;
+  if (overLimit && !errors.vus && !errors.durationSec && !errors.rampUpSec) {
+    errors[limits.maxVus != null && shape.vus > limits.maxVus ? 'vus' : 'durationSec'] = overLimit;
+  }
 
   // Empty = not checked.
   if (has('maxP95Ms')) {

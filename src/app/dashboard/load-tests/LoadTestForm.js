@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Save } from 'lucide-react';
-import { createLoadTest, updateLoadTest } from '@/lib/loadTestClient';
+import { Loader2, Save, Sparkles, X } from 'lucide-react';
+import { createLoadTest, draftLoadTest, updateLoadTest } from '@/lib/loadTestClient';
 import StepsEditor, { newStep, stepsFromForm, stepsToForm } from './StepsEditor';
 import styles from './LoadTestForm.module.css';
 
@@ -49,7 +49,29 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const [prompt, setPrompt] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState('');
+  const [draftNotes, setDraftNotes] = useState(null);
+  // Editing a field clears its error (ramp-up and duration share the total-time error).
+  const LINKED = { rampUpSec: ['rampUpSec', 'durationSec'], durationSec: ['rampUpSec', 'durationSec'] };
+  const set = (key) => (e) => {
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+    setFieldErrors((errs) => {
+      const keys = (LINKED[key] ?? [key]).filter((k) => errs[k]);
+      if (keys.length === 0) return errs;
+      const next = { ...errs };
+      for (const k of keys) delete next[k];
+      return next;
+    });
+  };
+  const vusHint = !limits
+    ? null
+    : limits.maxVus != null
+      ? `Up to ${limits.maxVus.toLocaleString()}`
+      : Number(form.vus) > 1000
+        ? 'A heavy load: one worker computer usually drives a few thousand users at most'
+        : 'No upper limit; big loads need a strong worker computer';
 
   const project = test ? test.project : projects.find((p) => p.id === form.projectId);
   const base = origin(project?.appBaseUrl ?? '');
@@ -70,6 +92,22 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
     setError(result.data.fieldErrors ? '' : result.data.error ?? 'Could not save the load test');
   };
 
+  // Claude fills in the form from the description; the person reviews it and saves as usual.
+  const draft = async () => {
+    setDrafting(true);
+    setDraftError('');
+    const result = await draftLoadTest(test ? test.project?.id : form.projectId, prompt);
+    setDrafting(false);
+    if (!result.ok) return setDraftError(result.data.error ?? 'Could not draft the load test');
+    const { steps: draftSteps, ...fields } = result.data.draft;
+    setForm((f) => ({ ...f, ...fields }));
+    if (fields.kind === 'scenario') setSteps(stepsToForm(draftSteps));
+    setFieldErrors(result.data.fieldErrors ?? {});
+    setError('');
+    setDraftNotes(result.data.notes ?? []);
+  };
+  const canDraft = Boolean(test || form.projectId) && prompt.trim().length >= 10 && !drafting;
+
   const field = (key, label, input, hint) => (
     <div className={styles.field}>
       <label className="label" htmlFor={`load-${key}`}>{label}</label>
@@ -80,6 +118,53 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
 
   return (
     <form className={styles.form} onSubmit={submit}>
+      <div className={styles.aiPanel} id="load-ai-panel">
+        <label className="label" htmlFor="load-ai-prompt">
+          <Sparkles size={14} /> Describe the load test{test ? ' to rewrite it' : ''}
+        </label>
+        <textarea
+          id="load-ai-prompt"
+          className="input"
+          rows={3}
+          maxLength={4000}
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && canDraft) {
+              e.preventDefault();
+              draft();
+            }
+          }}
+          placeholder="e.g. 500 users log in, search for 'shoes' and add the first result to the cart. Ramp up over 2 minutes, hold for 5. Fail if 95% of requests take over 1 s or more than 1% fail."
+        />
+        <div className={styles.aiActions}>
+          <span className={styles.hint}>
+            {!test && !form.projectId ? 'Choose a project below first. ' : ''}Claude fills in the form below; review it, then save. Mention real endpoints if you know them.
+          </span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={draft} disabled={!canDraft} id="load-ai-draft">
+            {drafting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {drafting ? 'Drafting…' : 'Draft with AI'}
+          </button>
+        </div>
+        {draftError && <p className={styles.fieldError}>{draftError}</p>}
+        {draftNotes && (
+          <div className={styles.aiNotes} role="status">
+            <div className={styles.aiNotesHead}>
+              <strong>{draftNotes.length ? 'Drafted. Check these assumptions:' : 'Drafted. Review the form below, then save.'}</strong>
+              <button type="button" className="btn btn-ghost btn-icon" onClick={() => setDraftNotes(null)} aria-label="Dismiss">
+                <X size={14} />
+              </button>
+            </div>
+            {draftNotes.length > 0 && (
+              <ul>
+                {draftNotes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className={styles.row}>
         {test ? (
           field('projectId', 'Project', <div className={styles.static}>{test.project?.name}</div>)
@@ -152,7 +237,7 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
       )}
 
       <div className={styles.row3}>
-        {field('vus', 'Virtual users', <input id="load-vus" className="input" type="number" min="1" value={form.vus} onChange={set('vus')} />, limits && `Up to ${limits.maxVus}`)}
+        {field('vus', 'Virtual users', <input id="load-vus" className="input" type="number" min="1" value={form.vus} onChange={set('vus')} />, vusHint)}
         {field('rampUpSec', 'Ramp-up (seconds)', <input id="load-rampUpSec" className="input" type="number" min="0" value={form.rampUpSec} onChange={set('rampUpSec')} />, 'From 0 to all users')}
         {field(
           'durationSec',

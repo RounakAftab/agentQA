@@ -375,3 +375,21 @@
 .emptyBlock p {
   max-width: 340px;
 }
+
+.trendTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.trendTooltip strong {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}

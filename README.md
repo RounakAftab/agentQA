@@ -189,8 +189,16 @@ The **Load Tests** menu runs k6 against one endpoint of a project's app and show
    numbers and whether each limit held.
    **Stop** ends the run early and keeps the numbers so far.
 
-Limits: `LOAD_MAX_VUS` (default 100) and `LOAD_MAX_DURATION_SEC` (ramp-up plus duration, default
-600). The app checks them when a test is saved or started, and the worker checks them again with
+**Draft with AI**: describe the test in plain words at the top of the form (for example "300 users
+log in, search and check out over 5 minutes; fail if p95 is over 1 s") and Claude fills in the
+form: single request or scenario steps, saved values like tokens, users, timings and pass limits.
+It lists the assumptions it made (such as guessed endpoints). Nothing is saved until you review it
+and press Save, and the usual checks apply. It needs `ANTHROPIC_API_KEY` on the app server;
+`LOAD_AI_MODEL` picks the model (default `claude-opus-5-5`).
+
+Limits: `LOAD_MAX_VUS` (default: no cap; set a number to cap virtual users) and
+`LOAD_MAX_DURATION_SEC` (ramp-up plus duration, default 600). How many users a run can really
+simulate depends on the worker computer: one machine usually drives a few thousand at most. The app checks them when a test is saved or started, and the worker checks them again with
 its own values. Load tests run only on a worker someone keeps running, never on the GitHub Actions
 runner, and the load comes from that computer's network. Admins, QA Leads and QA Engineers create
 and run load tests. Developers can view them.

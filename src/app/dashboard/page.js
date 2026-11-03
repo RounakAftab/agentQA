@@ -3,7 +3,7 @@
 import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import { useProjects, useAuditEvents } from '@/lib/dataStores';
+import { useProjects, useAuditEvents, useTestResults } from '@/lib/dataStores';
 import { useUserDirectory } from '@/lib/teamStore';
 import { getRelativeTime, getHealthColor, getHealthLabel } from '@/lib/format';
 import {
@@ -17,7 +17,7 @@ import {
   BarChart3,
   Plus,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import styles from './page.module.css';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -36,6 +36,66 @@ function weeklyActivity(events) {
     if (slot) slot.events += 1;
   }
   return days;
+}
+
+const TREND_DAYS = 30;
+
+// Pass rate per local day for the last 30 days, oldest first. Days without results stay empty
+// (null), so the line skips them instead of dropping to zero.
+function passRateTrend(results) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: TREND_DAYS }, (_, i) => {
+    const d = new Date(today.getTime() - (TREND_DAYS - 1 - i) * DAY_MS);
+    return { key: d.toDateString(), day: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), passed: 0, total: 0, ci: 0, agent: 0, passRate: null };
+  });
+  const byKey = new Map(days.map((d) => [d.key, d]));
+  for (const r of results) {
+    const slot = byKey.get(new Date(r.at).toDateString());
+    if (!slot) continue;
+    slot.passed += r.passed;
+    slot.total += r.total;
+    slot[r.source] += 1;
+  }
+  for (const d of days) if (d.total > 0) d.passRate = Math.round((d.passed / d.total) * 1000) / 10;
+  return days;
+}
+
+function TrendTooltip({ active, payload }) {
+  const d = payload?.[0]?.payload;
+  if (!active || !d || d.passRate == null) return null;
+  const sources = [d.ci && `${d.ci} CI ${d.ci === 1 ? 'report' : 'reports'}`, d.agent && `${d.agent} QA Agent ${d.agent === 1 ? 'run' : 'runs'}`].filter(Boolean).join(', ');
+  return (
+    <div className={styles.trendTooltip}>
+      <strong>{d.day}: {d.passRate}%</strong>
+      <span>{d.passed} of {d.total} tests passed</span>
+      <span>{sources}</span>
+    </div>
+  );
+}
+
+// Reads the current date, so it renders inside <Suspense> instead of during the prerender.
+function PassRateTrendChart({ results }) {
+  const trend = useMemo(() => passRateTrend(results), [results]);
+  if (!trend.some((d) => d.passRate != null)) {
+    return (
+      <div className={styles.emptyBlock} id="trend-empty">
+        <TrendingUp size={28} />
+        <p>No finished test runs in the last {TREND_DAYS} days.</p>
+      </div>
+    );
+  }
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <LineChart data={trend} id="trend-chart">
+        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+        <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+        <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} unit="%" tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={44} />
+        <Tooltip content={<TrendTooltip />} />
+        <Line type="monotone" dataKey="passRate" name="Pass rate" stroke="#7C3AED" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
 }
 
 // Reads the current date, so it renders inside <Suspense> instead of during the prerender.
@@ -57,6 +117,7 @@ function WeeklyActivityChart({ events }) {
 export default function DashboardPage() {
   const { projects, loaded } = useProjects();
   const { events: savedEvents } = useAuditEvents();
+  const { results: testResults, loaded: resultsLoaded } = useTestResults();
   const users = useUserDirectory();
 
   const stats = useMemo(() => {
@@ -103,14 +164,17 @@ export default function DashboardPage() {
             <div className={styles.chartHeader}>
               <div>
                 <h3 className={styles.chartTitle}>Pass Rate Trend</h3>
-                <p className={styles.chartSubtitle}>Across all projects</p>
+                <p className={styles.chartSubtitle}>Across all projects, per day, last {TREND_DAYS} days (CI reports and QA Agent runs)</p>
               </div>
             </div>
             <div className={styles.chartBody}>
-              <div className={styles.emptyBlock} id="trend-empty">
-                <TrendingUp size={28} />
-                <p>No CI results yet. The trend appears after test runs report to this dashboard.</p>
-              </div>
+              {!resultsLoaded ? (
+                <div className={styles.emptyBlock}>Loading chart...</div>
+              ) : (
+                <Suspense fallback={<div className={styles.emptyBlock}>Loading chart...</div>}>
+                  <PassRateTrendChart results={testResults} />
+                </Suspense>
+              )}
             </div>
           </div>
 

@@ -53,6 +53,7 @@ const projectsStore = createListStore('/api/projects', 'projects');
 const auditStore = createListStore('/api/audit', 'events');
 const approvalsStore = createListStore('/api/approvals', 'approvals');
 const ciRunsStore = createListStore('/api/ci/runs', 'runs');
+const testResultsStore = createListStore('/api/dashboard/results', 'results');
 
 export function useProjects() {
   const { items, loaded } = projectsStore.useStore();
@@ -74,6 +75,13 @@ export const refreshProjects = projectsStore.refresh;
 export const refreshAudit = auditStore.refresh;
 export const refreshApprovals = approvalsStore.refresh;
 export const refreshCiRuns = ciRunsStore.refresh;
+export const refreshTestResults = testResultsStore.refresh;
+
+// Finished test results (CI reports and QA Agent runs) from the last 30 days.
+export function useTestResults() {
+  const { items, loaded } = testResultsStore.useStore();
+  return { results: items, loaded };
+}
 
 // Test reports sent by the test repositories' GitHub Actions workflows.
 export function useCiRuns() {
