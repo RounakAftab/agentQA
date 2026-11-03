@@ -31,6 +31,7 @@ import {
   Copy,
   Loader2,
 } from 'lucide-react';
+import RolePermissions from './RolePermissions';
 import styles from './page.module.css';
 
 const EMPTY_FORM = { mode: 'create', id: null, name: '', email: '', role: '' };
@@ -522,6 +523,8 @@ export default function SettingsPage() {
                     </tbody>
                   </table>
                 </div>
+
+                <RolePermissions users={teamUsers} myRole={me.role} />
               </div>
             )}
           </div>

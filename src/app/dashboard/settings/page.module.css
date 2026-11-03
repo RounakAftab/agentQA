@@ -314,3 +314,115 @@
   background: var(--bg-card);
   box-shadow: -8px 0 8px -8px rgba(15, 23, 42, 0.15);
 }
+
+/* Roles & permissions (Team tab) */
+.rolesSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-5);
+}
+
+.sectionTitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-1);
+}
+
+.roleCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.roleCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.roleCardMine {
+  border-color: var(--primary-300);
+  background: var(--primary-50);
+}
+
+.roleCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.roleCardDesc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+  flex: 1;
+}
+
+.roleCardMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.matrix th.matrixRole,
+.matrix td.matrixCell {
+  text-align: center;
+  width: 110px;
+}
+
+.matrixMine {
+  background: var(--primary-50);
+}
+
+.matrix tr.matrixGroup th {
+  background: var(--slate-50);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.matrixLabel {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.allowed {
+  color: var(--success-600);
+  vertical-align: middle;
+}
+
+.denied {
+  color: var(--slate-300);
+  vertical-align: middle;
+}
+
+.roleRules {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.roleRules ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

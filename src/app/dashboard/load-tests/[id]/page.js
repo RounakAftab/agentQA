@@ -16,9 +16,10 @@ import {
   formatMs,
   formatSeconds,
 } from '@/lib/loadTestClient';
-import { ArrowLeft, Play, Square, Pencil, Loader2, AlertCircle, Monitor, LineChart, Terminal, History, CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowLeft, Play, Square, Pencil, Loader2, AlertCircle, Monitor, LineChart, Terminal, History, CheckCircle2, XCircle, FileText } from 'lucide-react';
 import LoadTestForm from '../LoadTestForm';
 import LoadCharts from './LoadCharts';
+import ClientSummary from './ClientSummary';
 import styles from './page.module.css';
 
 const OPERATOR_ROLES = ['Admin', 'QA Lead', 'QA Engineer'];
@@ -173,7 +174,7 @@ function ConsoleTab({ run }) {
 function RunPanel({ test, canEdit }) {
   const { runs, worker, refresh } = useLoadRuns(test.id);
   const [selectedId, setSelectedId] = useState(null);
-  const [tab, setTab] = useState('charts');
+  const [tab, setTab] = useState('summary');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -248,6 +249,9 @@ function RunPanel({ test, canEdit }) {
       {runs.length > 0 ? (
         <>
           <div className="tabs">
+            <button className={`tab ${tab === 'summary' ? 'active' : ''}`} onClick={() => setTab('summary')} id="load-tab-summary">
+              <FileText size={13} /> Summary
+            </button>
             <button className={`tab ${tab === 'charts' ? 'active' : ''}`} onClick={() => setTab('charts')}>
               <LineChart size={13} /> Charts
             </button>
@@ -278,7 +282,7 @@ function RunPanel({ test, canEdit }) {
                       className={`${styles.historyRow} ${r.id === runId ? styles.historyActive : ''}`}
                       onClick={() => {
                         setSelectedId(r.id);
-                        setTab('charts');
+                        setTab('summary');
                       }}
                     >
                       <td>
@@ -297,6 +301,8 @@ function RunPanel({ test, canEdit }) {
               <div className={styles.empty}>
                 <Loader2 size={18} className="animate-spin" />
               </div>
+            ) : tab === 'summary' ? (
+              <ClientSummary test={test} run={run} active={active} />
             ) : tab === 'console' ? (
               <ConsoleTab run={run} />
             ) : run.samples.length > 0 ? (
