@@ -195,7 +195,7 @@ form: single request or scenario steps, saved values like tokens, users, timings
 It lists the assumptions it made (such as guessed endpoints). Nothing is saved until you review it
 and press Save, and the usual checks apply. The worker (`npm run agent:worker`) asks Claude, with
 the same access as the QA Agent: `ANTHROPIC_API_KEY`, or your Claude login when no key is set.
-`LOAD_AI_MODEL` picks the model (default: `AGENT_MODEL`).
+`LOAD_AI_MODEL` picks the model (default `claude-opus-5-5`) and `LOAD_AI_EFFORT` its effort (default `high`).
 
 Limits: `LOAD_MAX_VUS` (default: no cap; set a number to cap virtual users) and
 `LOAD_MAX_DURATION_SEC` (ramp-up plus duration, default 600). How many users a run can really

@@ -45,14 +45,17 @@ export async function askClaude({ project, prompt, paths }) {
   const session = query({
     prompt: draftPrompt({ project, limits: loadLimits(), knownPaths: paths, prompt }),
     options: {
-      model: process.env.LOAD_AI_MODEL || process.env.AGENT_MODEL || 'claude-haiku-5-5',
+      // A strong model by default: drafting is one short call per test, and better guesses at
+      // endpoints, steps and limits save editing. LOAD_AI_MODEL overrides it.
+      model: process.env.LOAD_AI_MODEL || 'claude-opus-5-5',
+      effort: process.env.LOAD_AI_EFFORT || 'high',
       systemPrompt: DRAFT_SYSTEM_PROMPT,
       tools: [],
       canUseTool: async () => ({ behavior: 'deny', message: 'No tools are available.' }),
       settingSources: [],
       outputFormat: { type: 'json_schema', schema: draftJsonSchema() },
       maxTurns: 4,
-      maxBudgetUsd: Number(process.env.LOAD_AI_MAX_BUDGET_USD) || 0.2,
+      maxBudgetUsd: Number(process.env.LOAD_AI_MAX_BUDGET_USD) || 1,
       env,
     },
   });
