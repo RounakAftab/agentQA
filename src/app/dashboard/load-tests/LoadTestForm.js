@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, Save, Sparkles, X } from 'lucide-react';
-import { createLoadTest, draftLoadTest, updateLoadTest } from '@/lib/loadTestClient';
+import { createLoadTest, getLoadDraft, startLoadDraft, updateLoadTest } from '@/lib/loadTestClient';
 import StepsEditor, { newStep, stepsFromForm, stepsToForm } from './StepsEditor';
 import styles from './LoadTestForm.module.css';
 
@@ -50,7 +50,9 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const [drafting, setDrafting] = useState(false);
+  const [drafting, setDrafting] = useState(null); // null, or what the draft is waiting on
+  const pollRef = useRef(0); // bumped to stop polling (cancel, unmount, a new draft)
+  useEffect(() => () => void (pollRef.current += 1), []);
   const [draftError, setDraftError] = useState('');
   const [draftNotes, setDraftNotes] = useState(null);
   // Editing a field clears its error (ramp-up and duration share the total-time error).
@@ -93,12 +95,36 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
   };
 
   // Claude fills in the form from the description; the person reviews it and saves as usual.
+  // The worker asks Claude (with your Claude login or an API key), so the form polls for the answer.
   const draft = async () => {
-    setDrafting(true);
+    const poll = ++pollRef.current;
+    setDrafting('Sending…');
     setDraftError('');
-    const result = await draftLoadTest(test ? test.project?.id : form.projectId, prompt);
-    setDrafting(false);
-    if (!result.ok) return setDraftError(result.data.error ?? 'Could not draft the load test');
+    setDraftNotes(null);
+    const started = await startLoadDraft(test ? test.project?.id : form.projectId, prompt);
+    if (poll !== pollRef.current) return;
+    if (!started.ok) {
+      setDrafting(null);
+      return setDraftError(started.data.error ?? 'Could not draft the load test');
+    }
+    let result;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500));
+      if (poll !== pollRef.current) return;
+      result = await getLoadDraft(started.data.id);
+      if (poll !== pollRef.current) return;
+      const status = result.data.status;
+      if (!result.ok || status === 'DONE' || status === 'ERROR') break;
+      setDrafting(
+        status === 'RUNNING'
+          ? 'Claude is drafting…'
+          : result.data.worker?.online
+            ? 'Waiting for the worker…'
+            : 'No worker is running. Start "npm run agent:worker" and the draft begins.'
+      );
+    }
+    setDrafting(null);
+    if (!result.ok || result.data.status === 'ERROR') return setDraftError(result.data.error ?? 'Could not draft the load test');
     const { steps: draftSteps, ...fields } = result.data.draft;
     setForm((f) => ({ ...f, ...fields }));
     if (fields.kind === 'scenario') setSteps(stepsToForm(draftSteps));
@@ -107,6 +133,10 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
     setDraftNotes(result.data.notes ?? []);
   };
   const canDraft = Boolean(test || form.projectId) && prompt.trim().length >= 10 && !drafting;
+  const stopDraft = () => {
+    pollRef.current += 1;
+    setDrafting(null);
+  };
 
   const field = (key, label, input, hint) => (
     <div className={styles.field}>
@@ -141,10 +171,21 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
           <span className={styles.hint}>
             {!test && !form.projectId ? 'Choose a project below first. ' : ''}Claude fills in the form below; review it, then save. Mention real endpoints if you know them.
           </span>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={draft} disabled={!canDraft} id="load-ai-draft">
-            {drafting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {drafting ? 'Drafting…' : 'Draft with AI'}
-          </button>
+          {drafting ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={stopDraft} id="load-ai-stop">
+              <X size={14} /> Stop waiting
+            </button>
+          ) : (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={draft} disabled={!canDraft} id="load-ai-draft">
+              <Sparkles size={14} /> Draft with AI
+            </button>
+          )}
         </div>
+        {drafting && (
+          <p className={styles.aiStatus} role="status">
+            <Loader2 size={14} className="animate-spin" /> {drafting}
+          </p>
+        )}
         {draftError && <p className={styles.fieldError}>{draftError}</p>}
         {draftNotes && (
           <div className={styles.aiNotes} role="status">

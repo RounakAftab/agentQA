@@ -1,16 +1,14 @@
-// Drafts a k6 load test from a plain-language description with Claude. The result is only a
-// draft: it fills in the load test form, the person reviews it, and saving runs the usual
-// validation (validateLoadTestInput). Load still only goes to the project's own app link.
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+// "Draft with AI" for load tests, shared by the app (src/app/api/load-tests/draft) and the worker
+// (agent/loadDraftRunner.mjs, which asks Claude through the Agent SDK). No "@/" imports, so the
+// worker can load it directly. The draft only fills in the form: saving runs validateLoadTestInput.
 import { z } from 'zod';
-import { BUILTIN_VARS, LOAD_METHODS, validateLoadTestInput } from '@/lib/loadTests';
 
+export const LOAD_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
+export const BUILTIN_VARS = ['username', 'password', 'vu', 'iter'];
 export const MAX_PROMPT = 4000;
-const MODEL = process.env.LOAD_AI_MODEL || 'claude-opus-5-5';
 
-// Enums are plain strings: the SDK only checks them after the answer arrives, so a "get" would fail
-// the whole draft. They are normalized in toForm and checked by the usual validation instead.
+// Enums are described rather than enforced: a "get" or "Scenario" is normalized in toForm and
+// anything else is caught by the usual validation, instead of failing the whole draft.
 const METHOD_HINT = `One of ${LOAD_METHODS.join(', ')}`;
 const Header = z.object({ name: z.string(), value: z.string() });
 const Step = z.object({
@@ -25,7 +23,7 @@ const Step = z.object({
       z.object({
         var: z.string().describe('Variable name, letters/digits/_'),
         source: z.string().describe('"json" or "header"'),
-        path: z.string().describe('Dot path into the JSON body (e.g. "data.token") or a response header name'),
+        path: z.string().describe('Dot path into the JSON body (e.g. "data.token", "items.0.id") or a response header name'),
       })
     )
     .describe('Values to save from the response for later steps'),
@@ -33,7 +31,7 @@ const Step = z.object({
   maxP95Ms: z.number().int().nullable().describe('Per-step p95 limit in ms, or null'),
 });
 
-const Draft = z.object({
+export const DraftSchema = z.object({
   name: z.string().describe('Short name for the load test'),
   kind: z.string().describe('"request" or "scenario"'),
   method: z.string().describe(`${METHOD_HINT}. Single request only; GET for a scenario`),
@@ -49,7 +47,13 @@ const Draft = z.object({
   notes: z.array(z.string()).describe('Assumptions you made that the person should check, in plain words. Empty if none.'),
 });
 
-const SYSTEM = `You turn a QA engineer's description of a load test into a test definition for AgentQA, which runs it with k6.
+// The JSON Schema the Agent SDK's structured output takes.
+export function draftJsonSchema() {
+  const { $schema: _ignored, ...schema } = z.toJSONSchema(DraftSchema);
+  return schema;
+}
+
+export const DRAFT_SYSTEM_PROMPT = `You turn a QA engineer's description of a load test into a test definition for AgentQA, which runs it with k6. Answer only with the structured output; you have no tools.
 
 How AgentQA load tests work:
 - A test is either a "request" (one endpoint hit again and again) or a "scenario" (steps each virtual user runs in order, then starts over; at most 10 steps).
@@ -64,30 +68,31 @@ Rules:
 - Follow the numbers the person gives (users, ramp-up, duration, limits) exactly. When they give none, pick sensible defaults: 20 users, 30 s ramp-up, 60 s at full load, p95 under 1000 ms for pages or 500 ms for APIs, at most 1% failed.
 - Convert units: "2 minutes" is 120 seconds, "1 s" is 1000 ms, "under 1%" is 1.
 - You don't know this app's real API. Use the paths the person names; otherwise infer conventional ones and say so in notes, so they can correct them.
-- Only use {{username}}/{{password}} when the project has a test account; if the flow needs a login and it has none, still draft it with placeholders the person must fill and say so in notes.
+- Only use {{username}}/{{password}} when the project has a test account; if the flow needs a login and it has none, still draft it and say in notes that the test account must be set up.
 - Keep notes short and concrete ("Assumed the login endpoint is POST /api/login returning {"token": ...}").`;
 
-function contextFor(project, limits, knownPaths) {
-  return [
+// The user message: what Claude knows about the project, then the person's description.
+export function draftPrompt({ project, limits, knownPaths = [], prompt }) {
+  const context = [
     `Project: ${project.name}`,
     project.description ? `About the project: ${project.description}` : null,
     `App link (all load goes here): ${project.appBaseUrl}`,
-    `Test account for {{username}}/{{password}}: ${project.e2eUsername && project.e2ePasswordEnc ? 'set up' : 'not set up'}`,
+    `Test account for {{username}}/{{password}}: ${project.hasTestAccount ? 'set up' : 'not set up'}`,
     `Built-in variables: ${BUILTIN_VARS.map((v) => `{{${v}}}`).join(', ')}`,
     `Limits: ${limits.maxVus == null ? 'no cap on virtual users' : `at most ${limits.maxVus} virtual users`}; ramp-up plus duration at most ${limits.maxDurationSec} seconds.`,
     knownPaths.length ? `Paths already used in this project's load tests: ${knownPaths.join(', ')}` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  ].filter(Boolean);
+  return `${context.join('\n')}\n\nThe load test to create:\n${prompt}`;
 }
 
-// Turns Claude's draft into what the load test form holds (strings, headers as "Name: value" lines).
+// Claude's draft to what the load test form holds (strings, headers as "Name: value" lines; scenario
+// steps keep header arrays, which the form's stepsToForm converts).
 export function toForm(draft) {
   const text = (v) => (v == null ? '' : String(v));
-  const scenario = draft.kind.trim().toLowerCase() === 'scenario';
+  const scenario = String(draft.kind).trim().toLowerCase() === 'scenario';
   const method = (m) => String(m ?? 'GET').trim().toUpperCase();
   return {
-    name: draft.name.slice(0, 120),
+    name: String(draft.name).slice(0, 120),
     kind: scenario ? 'scenario' : 'request',
     method: scenario ? 'GET' : method(draft.method),
     url: scenario ? '/' : draft.path || '/',
@@ -104,55 +109,8 @@ export function toForm(draft) {
           method: method(s.method),
           body: s.body ?? null,
           thinkTimeSec: Math.min(60, Math.max(0, s.thinkTimeSec)),
-          extract: s.extract.map((e) => ({ ...e, source: e.source.trim().toLowerCase() === 'header' ? 'header' : 'json' })),
+          extract: s.extract.map((e) => ({ ...e, source: String(e.source).trim().toLowerCase() === 'header' ? 'header' : 'json' })),
         }))
       : [],
   };
-}
-
-export class DraftError extends Error {
-  constructor(message, status = 502) {
-    super(message);
-    this.status = status;
-  }
-}
-
-// Returns { form, notes, fieldErrors }: the draft for the form, what Claude assumed, and anything
-// the usual validation would reject when saved.
-export async function draftLoadTest({ prompt, project, limits, knownPaths = [] }) {
-  let client;
-  try {
-    client = new Anthropic();
-  } catch {
-    throw new DraftError('AI drafting is off: set ANTHROPIC_API_KEY on the server.', 503);
-  }
-
-  let response;
-  try {
-    response = await client.beta.messages.parse({
-      model: MODEL,
-      max_tokens: 16000,
-      output_config: { effort: 'medium', format: betaZodOutputFormat(Draft) },
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      system: SYSTEM,
-      messages: [{ role: 'user', content: `${contextFor(project, limits, knownPaths)}\n\nThe load test to create:\n${prompt}` }],
-    });
-  } catch (err) {
-    if (err instanceof Anthropic.AuthenticationError) throw new DraftError('AI drafting is off: the server has no valid ANTHROPIC_API_KEY.', 503);
-    if (err instanceof Anthropic.RateLimitError) throw new DraftError('Claude is busy right now. Try again in a minute.', 429);
-    if (err instanceof Anthropic.APIConnectionError) throw new DraftError('Could not reach Claude. Check the server’s internet connection.');
-    if (err instanceof Anthropic.APIError) throw new DraftError(`Claude could not draft the test (${err.status ?? 'error'}).`);
-    if (/credentials|api key|apiKey/i.test(String(err?.message))) throw new DraftError('AI drafting is off: set ANTHROPIC_API_KEY on the server.', 503);
-    // The SDK checks the answer against the schema and throws when it doesn't match.
-    if (err instanceof Anthropic.AnthropicError) throw new DraftError('Claude’s answer didn’t fit the load test format. Try again.');
-    throw err;
-  }
-
-  if (response.stop_reason === 'refusal') throw new DraftError('Claude declined to draft this test. Rephrase the description.', 422);
-  if (response.stop_reason === 'max_tokens' || !response.parsed_output) throw new DraftError('Claude’s answer was incomplete. Try a shorter description.');
-
-  const form = toForm(response.parsed_output);
-  const { errors } = validateLoadTestInput({ ...form, steps: form.kind === 'scenario' ? form.steps : undefined }, { project });
-  return { form, notes: response.parsed_output.notes, fieldErrors: errors };
 }

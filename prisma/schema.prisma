@@ -124,6 +124,7 @@ model Project {
   auditEvents  AuditEvent[]
   agentRuns    AgentRun[]
   loadTests    LoadTest[]
+  loadDrafts   LoadTestDraft[]
 }
 
 model ProjectMember {
@@ -500,6 +501,29 @@ model LoadTest {
   runs      LoadRun[]
 
   @@index([projectId, updatedAt])
+}
+
+// "Draft with AI" on the load test form. The worker (agent/loadDraftRunner.mjs) asks Claude through
+// the Agent SDK, so it works with a Claude login as well as an API key. Nothing is saved as a test:
+// the result only fills in the form.
+//   status: QUEUED -> RUNNING -> DONE | ERROR
+model LoadTestDraft {
+  id            String    @id @default(cuid())
+  projectId     String
+  prompt        String    @db.Text
+  status        String    @default("QUEUED")
+  result        Json? // the draft as the form holds it, plus notes; see src/lib/loadDraftSpec.js
+  error         String?   @db.Text
+  costUsd       Float?
+  workerId      String?
+  requestedById String?
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
 }
 
 // One run of a LoadTest by the worker (agent/loadRunner.mjs).

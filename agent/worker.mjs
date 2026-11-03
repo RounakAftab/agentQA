@@ -10,6 +10,7 @@ import { runTicket, CancelledError } from './runTicket.mjs';
 import { recordingLoop } from './recorder.mjs';
 import { codegenRunLoop } from './codegenRunner.mjs';
 import { loadRunLoop } from './loadRunner.mjs';
+import { loadDraftLoop } from './loadDraftRunner.mjs';
 import { testRunLoop } from './testRunner.mjs';
 import { redact } from './processes.mjs';
 
@@ -155,6 +156,8 @@ async function main() {
   const codegenRuns = ONCE ? null : codegenRunLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
   // Load tests send real traffic, so they run only where someone started a worker on purpose.
   const loadRuns = ONCE ? null : loadRunLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
+  // "Draft with AI" on the load test form: someone is waiting in the browser, so also long-running only.
+  const loadDrafts = ONCE ? null : loadDraftLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
   // "Run test" may show the browser on this computer, so like Codegen runs it needs a long-running worker.
   const testRuns = ONCE ? null : testRunLoop({ db, workerId: WORKER_ID, isStopping: () => stopping });
 
@@ -176,7 +179,7 @@ async function main() {
   }
 
   clearInterval(beat);
-  await Promise.all([recorder, codegenRuns, loadRuns, testRuns]);
+  await Promise.all([recorder, codegenRuns, loadRuns, loadDrafts, testRuns]);
   await db.agentWorker.delete({ where: { id: WORKER_ID } }).catch(() => {});
   await db.$disconnect();
   if (ONCE) console.log('[worker] Queue is empty, exiting');

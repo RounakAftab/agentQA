@@ -193,8 +193,9 @@ The **Load Tests** menu runs k6 against one endpoint of a project's app and show
 log in, search and check out over 5 minutes; fail if p95 is over 1 s") and Claude fills in the
 form: single request or scenario steps, saved values like tokens, users, timings and pass limits.
 It lists the assumptions it made (such as guessed endpoints). Nothing is saved until you review it
-and press Save, and the usual checks apply. It needs `ANTHROPIC_API_KEY` on the app server;
-`LOAD_AI_MODEL` picks the model (default `claude-opus-5-5`).
+and press Save, and the usual checks apply. The worker (`npm run agent:worker`) asks Claude, with
+the same access as the QA Agent: `ANTHROPIC_API_KEY`, or your Claude login when no key is set.
+`LOAD_AI_MODEL` picks the model (default: `AGENT_MODEL`).
 
 Limits: `LOAD_MAX_VUS` (default: no cap; set a number to cap virtual users) and
 `LOAD_MAX_DURATION_SEC` (ramp-up plus duration, default 600). How many users a run can really

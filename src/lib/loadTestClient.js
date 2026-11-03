@@ -39,8 +39,10 @@ export function useLoadRun(runId) {
 }
 
 export const createLoadTest = (form) => request('POST', '/api/load-tests', form);
-// Asks Claude for a draft from a description; nothing is saved. Returns { draft, notes, fieldErrors }.
-export const draftLoadTest = (projectId, prompt) => request('POST', '/api/load-tests/draft', { projectId, prompt });
+// "Draft with AI": queues the description for the worker, which asks Claude. Nothing is saved.
+export const startLoadDraft = (projectId, prompt) => request('POST', '/api/load-tests/draft', { projectId, prompt });
+// { status: QUEUED | RUNNING | DONE | ERROR, draft?, notes?, fieldErrors?, error?, worker }
+export const getLoadDraft = (id) => request('GET', `/api/load-tests/draft/${encodeURIComponent(id)}`);
 export const updateLoadTest = (id, changes) => request('PATCH', `/api/load-tests/${encodeURIComponent(id)}`, changes);
 export const deleteLoadTest = (id) => request('DELETE', `/api/load-tests/${encodeURIComponent(id)}`);
 export const startLoadRun = (testId) => request('POST', `/api/load-tests/${encodeURIComponent(testId)}/runs`);

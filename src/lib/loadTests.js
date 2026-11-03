@@ -2,6 +2,7 @@
 import { Prisma } from '@prisma/client';
 import { encryptSecret } from '@/lib/secrets';
 import { limitProblem, loadLimits, originOf, targetProblem } from '@/lib/loadLimits';
+import { BUILTIN_VARS, LOAD_METHODS } from '@/lib/loadDraftSpec';
 
 const iso = (d) => (d ? d.toISOString() : null);
 const MAX_BODY = 64_000;
@@ -9,14 +10,13 @@ const MAX_HEADERS = 20;
 const MAX_STEPS = 10;
 const MAX_EXTRACTS = 5;
 
-export const LOAD_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
+export { BUILTIN_VARS, LOAD_METHODS };
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // Headers that would change where the load goes or how k6 sends it.
 const BLOCKED_HEADERS = new Set(['host', 'content-length', 'transfer-encoding', 'connection']);
 
 // Values every scenario step can use as {{name}}: the project's test account, and k6's numbers for
 // the virtual user and its pass through the flow.
-export const BUILTIN_VARS = ['username', 'password', 'vu', 'iter'];
 const VAR_NAME = /^[A-Za-z_]\w{0,39}$/;
 export const templateVars = (text) => [...String(text ?? '').matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]);
 
