@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Save, Sparkles, X } from 'lucide-react';
 import { createLoadTest, getLoadDraft, startLoadDraft, updateLoadTest } from '@/lib/loadTestClient';
-import StepsEditor, { newStep, stepsFromForm, stepsToForm } from './StepsEditor';
+import StepsEditor, { MAX_STEPS, newStep, stepsFromForm, stepsToForm } from './StepsEditor';
+import JmeterRecorder from './JmeterRecorder';
 import styles from './LoadTestForm.module.css';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
@@ -133,6 +134,15 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
     setDraftNotes(result.data.notes ?? []);
   };
   const canDraft = Boolean(test || form.projectId) && prompt.trim().length >= 10 && !drafting;
+
+  // Requests picked from a JMeter recording replace the steps; the person reviews them and saves.
+  const useRecording = (recorded, { fileName }) => {
+    const label = fileName.replace(/\.(jmx|xml)$/i, '');
+    setForm((f) => ({ ...f, kind: 'scenario', name: f.name || `Recorded: ${label}`.slice(0, 120) }));
+    setSteps(stepsToForm(recorded));
+    setFieldErrors(({ steps: _steps, name: _name, ...rest }) => rest);
+    setError('');
+  };
   const stopDraft = () => {
     pollRef.current += 1;
     setDrafting(null);
@@ -205,6 +215,8 @@ export default function LoadTestForm({ test = null, projects = [], limits, onSav
           </div>
         )}
       </div>
+
+      <JmeterRecorder project={project ?? null} maxSteps={MAX_STEPS} onUse={useRecording} />
 
       <div className={styles.row}>
         {test ? (
