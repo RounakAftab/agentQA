@@ -16,7 +16,8 @@ import {
   formatMs,
   formatSeconds,
 } from '@/lib/loadTestClient';
-import { ArrowLeft, Play, Square, Pencil, Loader2, AlertCircle, Monitor, LineChart, Terminal, History, CheckCircle2, XCircle, FileText } from 'lucide-react';
+import { ArrowLeft, Play, Square, Pencil, Loader2, AlertCircle, Monitor, LineChart, Terminal, History, CheckCircle2, XCircle, FileText, Copy, Check } from 'lucide-react';
+import { matchTestType, testTypeLabel } from '@/lib/loadPresets';
 import LoadTestForm from '../LoadTestForm';
 import LoadCharts from './LoadCharts';
 import ClientSummary from './ClientSummary';
@@ -24,7 +25,7 @@ import styles from './page.module.css';
 
 const OPERATOR_ROLES = ['Admin', 'QA Lead', 'QA Engineer'];
 
-const loadShape = (c) => `${c.vus} virtual ${c.vus === 1 ? 'user' : 'users'} · ${c.rampUpSec ? `${formatSeconds(c.rampUpSec)} ramp-up + ` : ''}${formatSeconds(c.durationSec)} at full load`;
+const loadShape = (c, limits) => `${testTypeLabel(matchTestType(c, limits))} · ${c.vus} virtual ${c.vus === 1 ? 'user' : 'users'} · ${c.rampUpSec ? `${formatSeconds(c.rampUpSec)} ramp-up + ` : ''}${formatSeconds(c.durationSec)} at full load`;
 
 function limitsText(c) {
   const parts = [];
@@ -171,6 +172,58 @@ function ConsoleTab({ run }) {
   );
 }
 
+const WORKER_COMMAND = 'npm run agent:worker';
+
+// Before a run: whether a worker will pick it up, and how to start one if not. Load tests only run on
+// a worker someone started on purpose (never the GitHub Actions runner), so `onDemand` doesn't help.
+function WorkerReadiness({ worker }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(WORKER_COMMAND);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* the command is shown to copy by hand */
+    }
+  };
+  if (worker.online) {
+    return (
+      <p className={`${styles.notice} ${styles.noticeOk}`} id="load-worker-ready">
+        <CheckCircle2 size={13} /> Ready: runs start right away on <strong>{worker.hostname ?? 'the worker'}</strong>, and the load comes from that computer’s network.
+      </p>
+    );
+  }
+  return (
+    <div className={`${styles.notice} ${styles.noticeWarn} ${styles.workerSetup}`} id="load-worker-missing">
+      <p>
+        <AlertCircle size={13} /> <strong>No worker is running, so a run would wait.</strong>
+        {worker.lastSeenAt && ` Last seen ${getRelativeTime(worker.lastSeenAt)}.`}
+      </p>
+      <ol>
+        <li>
+          Install k6 on the computer that sends the load: Windows <code>winget install k6 --source winget</code>, macOS{' '}
+          <code>brew install k6</code>, Linux{' '}
+          <a href="https://grafana.com/docs/k6/latest/set-up/install-k6/" target="_blank" rel="noreferrer">
+            see the k6 guide
+          </a>
+          .
+        </li>
+        <li>
+          In the AgentQA folder, run{' '}
+          <span className={styles.command}>
+            <code>{WORKER_COMMAND}</code>
+            <button type="button" className="btn btn-ghost btn-icon" onClick={copy} title="Copy command" aria-label="Copy command">
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          </span>{' '}
+          and leave it open. Queued runs start as soon as it’s up.
+        </li>
+      </ol>
+    </div>
+  );
+}
+
 function RunPanel({ test, canEdit }) {
   const { runs, worker, refresh } = useLoadRuns(test.id);
   const [selectedId, setSelectedId] = useState(null);
@@ -224,12 +277,7 @@ function RunPanel({ test, canEdit }) {
         )}
       </div>
 
-      {worker && !worker.online && (
-        <p className={`${styles.notice} ${styles.noticeWarn}`}>
-          <AlertCircle size={13} /> No worker is running. Start <code>npm run agent:worker</code> on a computer with k6 installed; queued runs
-          start as soon as it is up.
-        </p>
-      )}
+      {worker && !active && <WorkerReadiness worker={worker} />}
       {active && run.hostname && (
         <p className={styles.hint}>
           <Monitor size={12} /> k6 is running on {run.hostname}. The load comes from that computer’s network.
@@ -386,7 +434,7 @@ function LoadTestDetail({ params }) {
                     <code>{test.url}</code>
                   </div>
                 )}
-                <p className={styles.meta}>{loadShape(test)}</p>
+                <p className={styles.meta}>{loadShape(test, limits)}</p>
                 <p className={styles.meta}>
                   {limitsText(test)}
                   {test.headerNames.length > 0 && ` · Headers${test.kind === 'scenario' ? ' for every step' : ''}: ${test.headerNames.join(', ')}`}

@@ -9,6 +9,7 @@ import { useProjects } from '@/lib/dataStores';
 import { getRelativeTime } from '@/lib/format';
 import { useLoadTests, deleteLoadTest, LOAD_RUN_STATUS, formatMs, formatSeconds } from '@/lib/loadTestClient';
 import { Gauge, Plus, Loader2, AlertCircle, Trash2, ChevronRight, Users, Timer } from 'lucide-react';
+import { matchTestType, testTypeLabel } from '@/lib/loadPresets';
 import LoadTestForm from './LoadTestForm';
 import styles from './page.module.css';
 
@@ -48,8 +49,8 @@ export default function LoadTestsPage() {
                 <div>
                   <strong>New load test</strong>
                   <p className={styles.hint}>
-                    Pick one endpoint of a project’s app, how many virtual users hit it and for how long, and the response time
-                    and error rate it must stay within. The worker runs it with k6.
+                    Pick a request or a flow of steps on a project’s app, then a kind of test, from a 30-second quick check to
+                    finding the limit, and how fast it must stay. The worker runs it with k6.
                   </p>
                   {noAppLinks && (
                     <p className={`${styles.hint} ${styles.hintWarn}`}>
@@ -105,7 +106,7 @@ export default function LoadTestsPage() {
                         )}
                       </div>
                       <div className={styles.rowMeta}>
-                        {test.project?.name} · <Users size={12} /> {test.vus} · <Timer size={12} /> {formatSeconds(test.rampUpSec + test.durationSec)}
+                        {test.project?.name} · {testTypeLabel(matchTestType(test, limits))} · <Users size={12} /> {test.vus} · <Timer size={12} /> {formatSeconds(test.rampUpSec + test.durationSec)}
                       </div>
                     </div>
                     <div className={styles.lastRun}>

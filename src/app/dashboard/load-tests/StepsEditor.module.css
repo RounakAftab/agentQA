@@ -163,3 +163,10 @@
     display: none;
   }
 }
+
+.help {
+  margin-left: var(--space-1);
+  color: var(--slate-400);
+  vertical-align: -2px;
+  cursor: help;
+}

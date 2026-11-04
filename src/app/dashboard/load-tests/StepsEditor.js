@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Info, Plus, Trash2, X } from 'lucide-react';
 import styles from './StepsEditor.module.css';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
@@ -50,9 +50,12 @@ export default function StepsEditor({ steps, onChange, base, hasTestAccount }) {
         // Values this step can use: built in, plus those saved by earlier steps.
         const saved = steps.slice(0, i).flatMap((s) => s.extract.map((e) => e.var.trim()).filter(Boolean));
         const available = [...BUILTIN.filter((v) => hasTestAccount || (v !== 'username' && v !== 'password')), ...saved];
-        const field = (name, label, props) => (
+        const field = (name, label, props, help) => (
           <label className={styles.small}>
-            <span>{label}</span>
+            <span title={help}>
+              {label}
+              {help && <Info size={12} className={styles.help} aria-label={help} />}
+            </span>
             <input className="input" value={step[name]} onChange={(e) => update(i, { [name]: e.target.value })} {...props} />
           </label>
         );
@@ -89,9 +92,9 @@ export default function StepsEditor({ steps, onChange, base, hasTestAccount }) {
             </div>
 
             <div className={styles.row}>
-              {field('expectStatus', 'Expected status', { type: 'number', min: 100, max: 599, placeholder: 'Any 2xx or 3xx' })}
-              {field('thinkTimeSec', 'Think time after (s)', { type: 'number', min: 0, max: 60, step: 0.1 })}
-              {field('maxP95Ms', 'Pass if p95 under (ms)', { type: 'number', min: 1, placeholder: 'Not checked' })}
+              {field('expectStatus', 'Expected status', { type: 'number', min: 100, max: 599, placeholder: 'Any 2xx or 3xx' }, 'Leave empty to accept any 2xx or 3xx. Set it when a redirect (e.g. 302 after login) is the right answer.')}
+              {field('thinkTimeSec', 'Think time after (s)', { type: 'number', min: 0, max: 60, step: 0.1 }, 'A pause after this step, like a person reading the page before clicking. Real people take 1–5 s; 0 hammers the app.')}
+              {field('maxP95Ms', 'Pass if p95 under (ms)', { type: 'number', min: 1, placeholder: 'Not checked' }, 'Only for this step: 95% of its requests must be faster than this.')}
             </div>
 
             <details className={styles.more} open={Boolean(step.headers || step.body || step.extract.length)}>
@@ -119,7 +122,9 @@ export default function StepsEditor({ steps, onChange, base, hasTestAccount }) {
                 </label>
               )}
               <div className={styles.small}>
-                <span>Save from the response, for later steps</span>
+                <span title="Pick a value from this step’s response, e.g. a login token at data.token, and use it in later steps as {{token}}.">
+                  Save from the response, for later steps <Info size={12} className={styles.help} />
+                </span>
                 {step.extract.map((e, k) => (
                   <div key={k} className={styles.extract}>
                     <input

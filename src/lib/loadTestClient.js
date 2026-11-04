@@ -43,9 +43,7 @@ export const createLoadTest = (form) => request('POST', '/api/load-tests', form)
 export const startLoadDraft = (projectId, prompt) => request('POST', '/api/load-tests/draft', { projectId, prompt });
 // { status: QUEUED | RUNNING | DONE | ERROR, draft?, notes?, fieldErrors?, error?, worker }
 export const getLoadDraft = (id) => request('GET', `/api/load-tests/draft/${encodeURIComponent(id)}`);
-// A .jmx saved after recording with JMeter's HTTP(S) Test Script Recorder -> { requests, notes }.
-export const importJmeterRecording = (projectId, jmx, fileName) => request('POST', '/api/load-tests/jmeter', { projectId, jmx, fileName });
-export const updateLoadTest =(id, changes) => request('PATCH', `/api/load-tests/${encodeURIComponent(id)}`, changes);
+export const updateLoadTest = (id, changes) => request('PATCH', `/api/load-tests/${encodeURIComponent(id)}`, changes);
 export const deleteLoadTest = (id) => request('DELETE', `/api/load-tests/${encodeURIComponent(id)}`);
 export const startLoadRun = (testId) => request('POST', `/api/load-tests/${encodeURIComponent(testId)}/runs`);
 export const cancelLoadRun = (runId) => request('DELETE', `/api/load-tests/runs/${encodeURIComponent(runId)}`);

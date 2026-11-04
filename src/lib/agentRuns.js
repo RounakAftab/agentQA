@@ -107,6 +107,8 @@ export async function workerStatus() {
   return {
     online: Boolean(latest && Date.now() - latest.lastSeenAt.getTime() < WORKER_STALE_MS),
     lastSeenAt: iso(latest?.lastSeenAt),
+    // The computer the most recent worker runs on, e.g. where load tests send their traffic from.
+    hostname: latest?.hostname ?? null,
     // Runs start a GitHub Actions runner themselves, so no worker has to be online.
     onDemand: cloudRunnerEnabled(),
   };
